@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `runner.py` — `run_query()` now closes the cursor and connection in a `finally` block, preventing connection leaks when queries fail or complete normally; each benchmark variant previously left an unclosed `pyodbc` connection and cursor, risking SQL Server connection pool exhaustion
+
 ### Changed
 
 - `runner.py` — `run_query()` now executes `DBCC DROPCLEANBUFFERS` and `DBCC FREEPROCCACHE` before each benchmark measurement to ensure cold-cache conditions; requires `ALTER SERVER STATE` permission — if missing, a warning is printed and the benchmark continues without cache clearing (graceful degradation)
