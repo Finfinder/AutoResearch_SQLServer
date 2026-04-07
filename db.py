@@ -36,4 +36,5 @@ def get_connection():
         f"DATABASE={database};"
         f"UID={uid};"
         f"PWD={pwd};"
+        "TrustServerCertificate=yes;"
     )

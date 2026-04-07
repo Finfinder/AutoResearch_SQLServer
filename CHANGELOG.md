@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `query.sql` — updated base query to use AdventureWorks schema (`[Sales].[SalesOrderHeader]`, `[Sales].[Customer]`, `[CustomerID]`, `[OrderDate]`) with proper bracket notation
+- `variants.py` — updated JOIN→EXISTS and NOLOCK variant transformations to match the new AdventureWorks table and column names
+- `db.py` — added `TrustServerCertificate=yes` to connection string to support SSL certificate trust for SQL Server connections without a valid certificate chain
 - `db.py` — credentials are now read from environment variables (`DB_SERVER`, `DB_DATABASE`, `DB_UID`, `DB_PWD`, `DB_DRIVER`) instead of being hardcoded; `python-dotenv` loads `.env` automatically for local development
 - `README.md` — updated Installation section (use `pip install -r requirements.txt`) and Configuration section (`.env` workflow with variable reference table; removed hardcoded connection string example)
 - `requirements.txt` — added `python-dotenv>=1.0.0`

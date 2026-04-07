@@ -85,9 +85,9 @@ Place your base SQL query in `query.sql`:
 
 ```sql
 SELECT o.*
-FROM orders o
-JOIN customers c ON o.customer_id = c.id
-WHERE o.created_at > '2024-01-01'
+FROM [Sales].[SalesOrderHeader] o
+JOIN [Sales].[Customer] c ON o.[CustomerID] = c.[CustomerID]
+WHERE o.[OrderDate] > '2024-01-01'
 ```
 
 ---
@@ -120,9 +120,9 @@ Test 4/4
 🏆 BEST RESULT:
 0.0187s
 SELECT TOP 1000 o.*
-FROM orders o
-JOIN customers c ON o.customer_id = c.id
-WHERE o.created_at > '2024-01-01'
+FROM [Sales].[SalesOrderHeader] o
+JOIN [Sales].[Customer] c ON o.[CustomerID] = c.[CustomerID]
+WHERE o.[OrderDate] > '2024-01-01'
 ```
 
 ---
@@ -168,8 +168,8 @@ def generate_variants(base_query):
 
     # Add your transformations here
     variants.append(base_query.replace(
-        "JOIN customers c ON o.customer_id = c.id",
-        "WHERE EXISTS (SELECT 1 FROM customers c WHERE c.id = o.customer_id)"
+        "JOIN [Sales].[Customer] c ON o.[CustomerID] = c.[CustomerID]",
+        "WHERE EXISTS (SELECT 1 FROM [Sales].[Customer] c WHERE c.[CustomerID] = o.[CustomerID])"
     ))
 
     return variants

@@ -5,8 +5,8 @@ def generate_variants(base_query):
 
     # 1. JOIN → EXISTS
     variants.append(base_query.replace(
-        "JOIN customers c ON o.customer_id = c.id",
-        "WHERE EXISTS (SELECT 1 FROM customers c WHERE c.id = o.customer_id)"
+        "JOIN [Sales].[Customer] c ON o.[CustomerID] = c.[CustomerID]",
+        "WHERE EXISTS (SELECT 1 FROM [Sales].[Customer] c WHERE c.[CustomerID] = o.[CustomerID])"
     ))
 
     # 2. Dodanie TOP (symulacja ograniczenia)
@@ -17,8 +17,8 @@ def generate_variants(base_query):
 
     # 3. Hint NOLOCK (ryzykowny, ale testowo)
     variants.append(base_query.replace(
-        "orders o",
-        "orders o WITH (NOLOCK)"
+        "[Sales].[SalesOrderHeader] o",
+        "[Sales].[SalesOrderHeader] o WITH (NOLOCK)"
     ))
 
     # 4. Zmiana kolejności WHERE (czasem planner reaguje)

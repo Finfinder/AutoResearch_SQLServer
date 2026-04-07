@@ -1,5 +1,5 @@
 -- query.sql
 SELECT o.*
-FROM orders o
-JOIN customers c ON o.customer_id = c.id
-WHERE o.created_at > '2024-01-01'
+FROM [Sales].[SalesOrderHeader] o
+JOIN [Sales].[Customer] c ON o.[CustomerID] = c.[CustomerID]
+WHERE o.[OrderDate] > '2024-01-01'
