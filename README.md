@@ -23,6 +23,8 @@ Automated SQL query performance researcher for Microsoft SQL Server. Takes a bas
 - [ODBC Driver 17 for SQL Server](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server)
 - Python packages: `pyodbc`, `python-dotenv`
 
+> **Note**: Before each benchmark run, the tool executes `DBCC DROPCLEANBUFFERS` and `DBCC FREEPROCCACHE` to ensure cold-cache conditions. This requires the `ALTER SERVER STATE` permission (or `sysadmin` role) on the SQL Server instance. If the permission is missing, a warning is printed and the benchmark continues without cache clearing (warm cache).
+
 ---
 
 ## Installation
@@ -136,7 +138,7 @@ WHERE o.[OrderDate] > '2024-01-01'
    - Adding `TOP N` to limit result set
    - `WITH (NOLOCK)` hint (dirty reads, use with caution)
    - `OPTION (RECOMPILE)` to force fresh execution plan
-4. **`runner.py`** — executes a query against SQL Server via `pyodbc`, measures wall-clock time, returns `(duration, error)`.
+4. **`runner.py`** — before each measurement executes `DBCC DROPCLEANBUFFERS` and `DBCC FREEPROCCACHE` to clear the buffer pool and plan cache (cold cache), then executes the query via `pyodbc`, measures wall-clock time, returns `(duration, error)`. If `ALTER SERVER STATE` permission is missing, cache clearing is skipped with a warning.
 5. **`db.py`** — connection factory using ODBC Driver 17.
 
 ---

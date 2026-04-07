@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `runner.py` — `run_query()` now executes `DBCC DROPCLEANBUFFERS` and `DBCC FREEPROCCACHE` before each benchmark measurement to ensure cold-cache conditions; requires `ALTER SERVER STATE` permission — if missing, a warning is printed and the benchmark continues without cache clearing (graceful degradation)
+
 - `query.sql` — updated base query to use AdventureWorks schema (`[Sales].[SalesOrderHeader]`, `[Sales].[Customer]`, `[CustomerID]`, `[OrderDate]`) with proper bracket notation
 - `variants.py` — updated JOIN→EXISTS and NOLOCK variant transformations to match the new AdventureWorks table and column names
 - `db.py` — added `TrustServerCertificate=yes` to connection string to support SSL certificate trust for SQL Server connections without a valid certificate chain
