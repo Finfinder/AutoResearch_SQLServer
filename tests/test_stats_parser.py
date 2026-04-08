@@ -1,9 +1,4 @@
 # tests/test_stats_parser.py
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from stats_parser import parse_io_stats, parse_time_stats, parse_execution_plan
 
 _IO_SINGLE = (

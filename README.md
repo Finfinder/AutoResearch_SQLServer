@@ -176,17 +176,21 @@ Test 4/4
 
 ```
 AutoResearch_SQLServer/
-├── main.py          # Entry point — orchestrator
-├── query.sql        # Base SQL query to optimize
-├── variants.py      # Query variant generator
-├── runner.py        # Query executor: SET STATISTICS, metrics, Query Store
-├── stats_parser.py  # Pure parsers: IO/TIME regex, XML plan
-├── db.py            # SQL Server connection factory
+├── main.py              # Entry point — orchestrator
+├── query.sql            # Base SQL query to optimize
+├── variants.py          # Query variant generator
+├── runner.py            # Query executor: SET STATISTICS, metrics, Query Store
+├── stats_parser.py      # Pure parsers: IO/TIME regex, XML plan
+├── db.py                # SQL Server connection factory
 ├── tests/
-│   └── test_stats_parser.py  # Unit tests for parsers (no DB needed)
-├── plans/           # Actual execution plans as .sqlplan (generated)
-├── .env.example     # Environment variable template (commit this)
-├── results.json     # Benchmark results with server-side metrics (generated)
+│   ├── test_stats_parser.py  # Unit tests for parsers (no DB needed)
+│   ├── test_variants.py      # Unit tests for variant generator
+│   └── test_db.py            # Unit tests for connection factory (mocked)
+├── plans/               # Actual execution plans as .sqlplan (generated)
+├── .env.example         # Environment variable template (commit this)
+├── pytest.ini           # pytest configuration
+├── requirements-dev.txt # Dev dependencies (pytest, pytest-cov)
+├── results.json         # Benchmark results with server-side metrics (generated)
 ├── LICENSE
 └── README.md
 ```
@@ -242,6 +246,21 @@ def generate_variants(base_query):
 ```
 
 The transformations are query-specific — adapt them to match the structure of your base query in `query.sql`.
+
+---
+
+## Testing
+
+```bash
+# Install dev dependencies (includes pytest)
+pip install -r requirements-dev.txt
+
+# Run all tests
+pytest
+
+# Run with coverage report
+pytest --cov=. --cov-report=term-missing
+```
 
 ---
 
