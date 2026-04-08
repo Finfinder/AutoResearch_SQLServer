@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `requirements-dev.txt` — dev-only dependencies file referencing `requirements.txt` and adding `pytest>=7.0` and `pytest-cov`; keeps testing tools separate from runtime dependencies
+- `pytest.ini` — formal pytest configuration with `pythonpath = .` (eliminates `sys.path` hacks), `testpaths = tests`, and test discovery patterns consistent with existing test conventions
+- `tests/test_variants.py` — 6 unit tests for `generate_variants()` covering all 4 structural transformations (JOIN→EXISTS, TOP, NOLOCK, RECOMPILE) and the no-match edge case; no mocks required (pure function)
+- `tests/test_db.py` — 6 unit tests for `get_connection()` covering env var validation (missing all / missing one), default and custom ODBC driver, connection string format, and return value; `pyodbc.connect` is fully mocked — no real database connection required
 - `stats_parser.py` — pure-function module for parsing SQL Server diagnostic output:
   - `parse_io_stats(messages)` — regex parser for `SET STATISTICS IO` output from `cursor.messages`; sums logical/physical/read-ahead/lob reads across all tables in the query (handles JOIN scenarios)
   - `parse_time_stats(messages)` — regex parser for `SET STATISTICS TIME` output; extracts CPU time and elapsed time from the "Execution Times" section (excludes parse/compile phase)
@@ -20,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `tests/test_stats_parser.py` — removed `sys.path.insert()` hack (lines 2–5); imports now resolved natively via `pythonpath = .` in `pytest.ini`
 - `runner.py` — `run_query()` now collects server-side diagnostics in addition to wall-clock time:
   - Enables `SET STATISTICS IO ON` and `SET STATISTICS TIME ON` before each query; parses IO and CPU/elapsed metrics from `cursor.messages` via `stats_parser`
   - Enables `SET STATISTICS XML ON` to capture the actual execution plan (iterates result sets via `while cursor.nextset()` loop to skip intermediate non-query sets); graceful degradation if `SHOWPLAN` permission is missing
