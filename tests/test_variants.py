@@ -86,7 +86,6 @@ class TestInterface:
         result = generate_variants(_SIMPLE_QUERY)
         assert len(result) > 0
         labels = [label for label, _ in result]
-        assert "TOP 1000" in labels
         assert "RECOMPILE" in labels
 
     def test_simple_query_no_join_variant(self):
@@ -162,24 +161,6 @@ class TestJoinToExists:
         labels = [label for label, _ in result]
         assert "JOIN→EXISTS[1]" in labels
         assert "JOIN→EXISTS[2]" in labels
-
-
-class TestTopN:
-    def test_produces_top_1000(self):
-        result = generate_variants(_JOIN_QUERY)
-        labels = [label for label, _ in result]
-        assert "TOP 1000" in labels
-
-    def test_top_in_sql(self):
-        result = generate_variants(_JOIN_QUERY)
-        _, sql = next((l, s) for l, s in result if l == "TOP 1000")
-        assert "TOP 1000" in sql
-
-    def test_no_top_if_already_has_top(self):
-        sql = "SELECT TOP 500 * FROM [Sales].[SalesOrderHeader]"
-        result = generate_variants(sql)
-        labels = [label for label, _ in result]
-        assert "TOP 1000" not in labels
 
 
 class TestNolock:

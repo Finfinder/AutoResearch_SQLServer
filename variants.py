@@ -82,16 +82,6 @@ def _transform_join_to_exists(ast):
     return results
 
 
-def _transform_top_n(ast, n=1000):
-    if not isinstance(ast, exp.Select):
-        return []
-    if ast.args.get("limit") is not None:
-        return []
-    ast_c = ast.copy()
-    ast_c.set("limit", exp.Limit(expression=exp.Literal.number(n)))
-    return [(f"TOP {n}", ast_c)]
-
-
 def _transform_nolock(ast):
     tables = list(ast.find_all(exp.Table))
     if not tables:
@@ -383,7 +373,6 @@ def _transform_index_suggestions(ast):
 
 _TRANSFORMS = [
     _transform_join_to_exists,
-    _transform_top_n,
     _transform_nolock,
     _transform_recompile,
     _transform_in_to_exists,
