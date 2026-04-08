@@ -36,7 +36,7 @@ def _collect_execution_plan(cursor, warnings):
     return plan_xml, execution_plan
 
 
-def run_query(query):
+def run_query(query, collect_plan=True):
     conn = get_connection()
     cursor = None
     try:
@@ -48,14 +48,15 @@ def run_query(query):
         cursor.execute("SET STATISTICS IO ON")
         cursor.execute("SET STATISTICS TIME ON")
 
-        xml_enabled = True
-        try:
-            cursor.execute("SET STATISTICS XML ON")
-        except Exception as e:
-            xml_enabled = False
-            msg = f"Execution plan unavailable (missing SHOWPLAN permission): {e}"
-            warnings.append(msg)
-            print(f"⚠️  Warning: SET STATISTICS XML skipped: {e}")
+        xml_enabled = False
+        if collect_plan:
+            try:
+                cursor.execute("SET STATISTICS XML ON")
+                xml_enabled = True
+            except Exception as e:
+                msg = f"Execution plan unavailable (missing SHOWPLAN permission): {e}"
+                warnings.append(msg)
+                print(f"⚠️  Warning: SET STATISTICS XML skipped: {e}")
 
         start = time.perf_counter()
         try:
@@ -82,7 +83,9 @@ def run_query(query):
         if xml_enabled:
             plan_xml, execution_plan = _collect_execution_plan(cursor, warnings)
 
-        query_store = _fetch_query_store(cursor, query, warnings)
+        query_store = None
+        if collect_plan:
+            query_store = _fetch_query_store(cursor, query, warnings)
 
         if not server_metrics and execution_plan:
             runtime = execution_plan.get("runtime_stats", {})

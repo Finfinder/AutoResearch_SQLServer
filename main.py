@@ -1,7 +1,9 @@
 # main.py
+import argparse
 import json
 import sys
 from pathlib import Path
+from aggregator import aggregate_runs
 from db import get_connection
 from guardrails import check_variant
 from runner import run_query
@@ -12,6 +14,20 @@ from variants import generate_variants, VariantGenerationError
 def load_query():
     with open("query.sql", "r") as f:
         return f.read()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="AutoResearch SQL Server benchmarking tool")
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=1,
+        metavar="N",
+        help="Number of benchmark runs per variant (default: 1, max: 100)",
+    )
+    args = parser.parse_args()
+    args.runs = max(1, min(args.runs, 100))
+    return args
 
 
 def save_results(results):
@@ -27,49 +43,90 @@ def _save_plan(plan_xml, variant_index):
     return str(plan_path)
 
 
-def _print_variant_result(result, index, total, label):
-    print(f"Test {index}/{total} [{label}]")
-    sm = result.get("server_metrics", {})
-    ep = result.get("execution_plan", {})
-    cpu = sm.get("cpu_time_ms")
-    elapsed = sm.get("elapsed_time_ms")
-    if cpu is not None and elapsed is not None:
-        print(f"⏱️  Time: {result['time']:.4f}s (server: {cpu}ms CPU / {elapsed}ms elapsed)")
+def _print_variant_result(result, index, total, label, num_runs=1):
+    if num_runs > 1:
+        print(f"Test {index}/{total} [{label}] ({num_runs} runs)")
+        time_stats = result.get("time", {})
+        if time_stats:
+            print(f"⏱️  Time: {time_stats['mean']:.4f}s mean ± {time_stats['stdev']:.4f}s (median: {time_stats['median']:.4f}s)")
+        sm = result.get("server_metrics", {})
+        ep = result.get("execution_plan", {})
+        cpu = sm.get("cpu_time_ms", {})
+        if cpu:
+            print(f"⚡ CPU: {cpu['mean']:.0f}ms mean ± {cpu['stdev']:.0f}ms (median: {cpu['median']:.0f}ms)")
+        logical = sm.get("logical_reads", {})
+        physical = sm.get("physical_reads", {})
+        if logical:
+            phys_str = f", {physical['median']:.0f} physical reads (median)" if physical else ""
+            print(f"📊 IO: {logical['median']:.0f} logical reads (median){phys_str}")
+        memory_grant = ep.get("memory_grant_kb")
+        if memory_grant is not None:
+            print(f"💾 Memory grant: {memory_grant} KB")
+        if ep.get("spill_warnings"):
+            print("⚠️  SpillToTempDb detected!")
+        for warning in result.get("warnings", []):
+            print(f"⚠️  {warning}")
     else:
-        print(f"⏱️  Time: {result['time']:.4f}s")
-    logical = sm.get("logical_reads")
-    physical = sm.get("physical_reads")
-    if logical is not None:
-        print(f"📊 IO: {logical} logical reads, {physical} physical reads")
-    memory_grant = ep.get("memory_grant_kb")
-    if memory_grant is not None:
-        print(f"💾 Memory grant: {memory_grant} KB")
-    if ep.get("spill_warnings"):
-        print("⚠️  SpillToTempDb detected!")
-    for warning in result.get("warnings", []):
-        print(f"⚠️  {warning}")
+        print(f"Test {index}/{total} [{label}]")
+        sm = result.get("server_metrics", {})
+        ep = result.get("execution_plan", {})
+        cpu = sm.get("cpu_time_ms")
+        elapsed = sm.get("elapsed_time_ms")
+        if cpu is not None and elapsed is not None:
+            print(f"⏱️  Time: {result['time']:.4f}s (server: {cpu}ms CPU / {elapsed}ms elapsed)")
+        else:
+            print(f"⏱️  Time: {result['time']:.4f}s")
+        logical = sm.get("logical_reads")
+        physical = sm.get("physical_reads")
+        if logical is not None:
+            print(f"📊 IO: {logical} logical reads, {physical} physical reads")
+        memory_grant = ep.get("memory_grant_kb")
+        if memory_grant is not None:
+            print(f"💾 Memory grant: {memory_grant} KB")
+        if ep.get("spill_warnings"):
+            print("⚠️  SpillToTempDb detected!")
+        for warning in result.get("warnings", []):
+            print(f"⚠️  {warning}")
 
 
-def _print_ranking(results):
+def _print_ranking(results, num_runs=1):
     if not results:
         return
     print("\n🏆 RANKING:")
-    valid = [r for r in results if r.get("time") is not None]
-    if valid:
-        best_time = min(valid, key=lambda r: r["time"])
-        print(f"  ⏱️  Best by time:         [{best_time['label']}] — {best_time['time']:.4f}s")
-    logical_results = [
-        r for r in results if r.get("server_metrics", {}).get("logical_reads") is not None
-    ]
-    if logical_results:
-        best_io = min(logical_results, key=lambda r: r["server_metrics"]["logical_reads"])
-        print(f"  📊 Best by IO:            [{best_io['label']}] — {best_io['server_metrics']['logical_reads']} logical reads")
-    cpu_results = [
-        r for r in results if r.get("server_metrics", {}).get("cpu_time_ms") is not None
-    ]
-    if cpu_results:
-        best_cpu = min(cpu_results, key=lambda r: r["server_metrics"]["cpu_time_ms"])
-        print(f"  ⚡ Best by CPU:            [{best_cpu['label']}] — {best_cpu['server_metrics']['cpu_time_ms']}ms")
+    if num_runs > 1:
+        valid = [r for r in results if isinstance(r.get("time"), dict) and r["time"].get("median") is not None]
+        if valid:
+            best_time = min(valid, key=lambda r: r["time"]["median"])
+            print(f"  ⏱️  Best by time (median):  [{best_time['label']}] — {best_time['time']['median']:.4f}s")
+        logical_results = [
+            r for r in results if isinstance(r.get("server_metrics", {}).get("logical_reads"), dict)
+        ]
+        if logical_results:
+            best_io = min(logical_results, key=lambda r: r["server_metrics"]["logical_reads"]["median"])
+            print(f"  📊 Best by IO (median):     [{best_io['label']}] — {best_io['server_metrics']['logical_reads']['median']:.0f} logical reads")
+        cpu_results = [
+            r for r in results if isinstance(r.get("server_metrics", {}).get("cpu_time_ms"), dict)
+        ]
+        if cpu_results:
+            best_cpu = min(cpu_results, key=lambda r: r["server_metrics"]["cpu_time_ms"]["median"])
+            print(f"  ⚡ Best by CPU (median):    [{best_cpu['label']}] — {best_cpu['server_metrics']['cpu_time_ms']['median']:.0f}ms")
+    else:
+        valid = [r for r in results if r.get("time") is not None]
+        if valid:
+            best_time = min(valid, key=lambda r: r["time"])
+            print(f"  ⏱️  Best by time:         [{best_time['label']}] — {best_time['time']:.4f}s")
+        logical_results = [
+            r for r in results if r.get("server_metrics", {}).get("logical_reads") is not None
+        ]
+        if logical_results:
+            best_io = min(logical_results, key=lambda r: r["server_metrics"]["logical_reads"])
+            print(f"  📊 Best by IO:            [{best_io['label']}] — {best_io['server_metrics']['logical_reads']} logical reads")
+        cpu_results = [
+            r for r in results if r.get("server_metrics", {}).get("cpu_time_ms") is not None
+        ]
+        if cpu_results:
+            best_cpu = min(cpu_results, key=lambda r: r["server_metrics"]["cpu_time_ms"])
+            print(f"  ⚡ Best by CPU:            [{best_cpu['label']}] — {best_cpu['server_metrics']['cpu_time_ms']}ms")
     mem_results = [
         r for r in results if r.get("execution_plan", {}).get("memory_grant_kb") is not None
     ]
@@ -136,6 +193,8 @@ def _check_row_count(base_count, query, label, val_conn):
 
 
 def main():
+    args = parse_args()
+    num_runs = args.runs
     base_query = load_query()
 
     try:
@@ -163,40 +222,80 @@ def main():
             if blocked:
                 continue
 
-            result = run_query(query)
+            if num_runs == 1:
+                result = run_query(query)
 
-            if result["error"]:
-                print(f"Test {i+1}/{len(variants)} [{label}]")
-                print(f"❌ Error: {result['error']}")
-                continue
+                if result["error"]:
+                    print(f"Test {i+1}/{len(variants)} [{label}]")
+                    print(f"❌ Error: {result['error']}")
+                    continue
 
-            _print_variant_result(result, i + 1, len(variants), label)
+                _print_variant_result(result, i + 1, len(variants), label, num_runs=1)
 
-            plan_file = None
-            if result.get("plan_xml"):
-                plan_file = _save_plan(result["plan_xml"], i + 1)
+                plan_file = None
+                if result.get("plan_xml"):
+                    plan_file = _save_plan(result["plan_xml"], i + 1)
 
-            all_results.append({**result, "label": label})
-            # "warnings" merges runner warnings + guardrail warnings for backward-compatible consumers.
-            # "guardrail_warnings" retains the guardrail subset separately for finer-grained inspection.
-            combined_warnings = result.get("warnings", []) + guardrail_warnings
-            json_results.append({
-                "label": label,
-                "query": query,
-                "time": result["time"],
-                "server_metrics": result.get("server_metrics", {}),
-                "execution_plan": result.get("execution_plan", {}),
-                "execution_plan_file": plan_file,
-                "query_store": result.get("query_store"),
-                "warnings": combined_warnings,
-                "validation": validation_info,
-                "guardrail_warnings": guardrail_warnings,
-            })
+                all_results.append({**result, "label": label})
+                combined_warnings = result.get("warnings", []) + guardrail_warnings
+                json_results.append({
+                    "label": label,
+                    "query": query,
+                    "time": result["time"],
+                    "server_metrics": result.get("server_metrics", {}),
+                    "execution_plan": result.get("execution_plan", {}),
+                    "execution_plan_file": plan_file,
+                    "query_store": result.get("query_store"),
+                    "warnings": combined_warnings,
+                    "validation": validation_info,
+                    "guardrail_warnings": guardrail_warnings,
+                })
+            else:
+                run_results = []
+                for run_i in range(num_runs):
+                    result = run_query(query, collect_plan=(run_i == 0))
+                    if not result["error"]:
+                        run_results.append(result)
+                    else:
+                        print(f"⚠️  [{label}] run {run_i + 1}/{num_runs} error: {result['error']}")
+
+                if not run_results:
+                    print(f"Test {i+1}/{len(variants)} [{label}]")
+                    print(f"❌ All {num_runs} runs failed")
+                    continue
+
+                agg = aggregate_runs(run_results)
+                _print_variant_result(agg, i + 1, len(variants), label, num_runs=len(run_results))
+
+                plan_file = None
+                if agg.get("plan_xml"):
+                    plan_file = _save_plan(agg["plan_xml"], i + 1)
+
+                all_results.append({**agg, "label": label})
+                combined_warnings = agg.get("warnings", []) + guardrail_warnings
+                raw_runs = [
+                    {"time": r["time"], "server_metrics": r.get("server_metrics", {})}
+                    for r in run_results
+                ]
+                json_results.append({
+                    "label": label,
+                    "query": query,
+                    "runs": num_runs,
+                    "time": agg["time"],
+                    "server_metrics": agg.get("server_metrics", {}),
+                    "execution_plan": agg.get("execution_plan", {}),
+                    "execution_plan_file": plan_file,
+                    "query_store": agg.get("query_store"),
+                    "warnings": combined_warnings,
+                    "validation": validation_info,
+                    "guardrail_warnings": guardrail_warnings,
+                    "raw_runs": raw_runs,
+                })
     finally:
         if val_conn is not None:
             val_conn.close()
 
-    _print_ranking(all_results)
+    _print_ranking(all_results, num_runs=num_runs)
     save_results(json_results)
 
 
