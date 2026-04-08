@@ -9,7 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `guardrails.py` — static AST-based variant safety checks using `sqlglot`: G1 (`no_limit_added` — blocks TOP/LIMIT), G2 (`no_where_removed` — blocks WHERE removal), G4 (`nolock_warning` — warns on NOLOCK)
+- `--runs N` CLI argument — runs each variant N times (default: 1, clamped to [1, 100]); cold cache (`DBCC DROPCLEANBUFFERS` / `DBCC FREEPROCCACHE`) is cleared before each individual run; execution plan and Query Store are collected from the first run only
+- `aggregator.py` — pure aggregation module with `compute_stats(values)` (mean / median / stdev / min / max via `statistics` stdlib) and `aggregate_runs(run_results)` (aggregates `time` and `server_metrics`, preserves execution plan / Query Store from first run, skips error runs)
+- `tests/test_aggregator.py` — 11 unit tests covering `compute_stats` (multi-value, single-value stdev=0, empty→None) and `aggregate_runs` (time/IO aggregation, first-run plan preservation, error run skipping, empty server_metrics, plan-loss edge case)
+
+### Changed
+
+- `runner.py` — `run_query(query)` gains optional `collect_plan=True` parameter; when `False`, `SET STATISTICS XML ON`, `_collect_execution_plan()`, and `_fetch_query_store()` are all skipped (returns `plan_xml=None, execution_plan={}, query_store=None`), reducing per-run overhead for multi-run benchmarks
+- `main.py` — integrates `parse_args()` with argparse, `--runs N` loop over variants, and conditional JSON format: N=1 preserves flat backward-compatible format; N>1 adds `"runs"`, aggregated `"time"` / `"server_metrics"` dicts (mean/median/stdev/min/max), and `"raw_runs"` array; ranking uses median for N>1
+- Console output for N>1: variant header shows `(N runs)`, time printed as `mean ± stdev (median)`, IO and CPU printed as medians
+
+
 - `validator.py` — runtime row count validator: compares `SELECT COUNT(*) FROM (<base>) AS _v` against each variant before benchmarking; mismatches block the variant with graceful degradation on failure
 - `GUARDRAILS.md` — human-readable reference for guardrail rules, rationale, and guidance for adding new transforms
 - `tests/test_guardrails.py` — 14 unit tests covering all guardrail rules (G1, G2, G4), edge cases (UNION exemption, SQL comments, unparseable SQL)

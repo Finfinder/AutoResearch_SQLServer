@@ -105,7 +105,11 @@ WHERE o.[OrderDate] > '2024-01-01'
 ## Quick Start
 
 ```bash
+# Single run per variant (default)
 python main.py
+
+# Multiple runs per variant — aggregates mean ± stdev / median
+python main.py --runs 5
 ```
 
 The tool will:
@@ -117,6 +121,13 @@ The tool will:
 6. Save all results (including validation info) to `results.json`
 7. Save actual execution plans as `.sqlplan` files to `plans/` (openable in SSMS)
 8. Print a multi-criteria ranking (time, IO, CPU, memory grant)
+
+### CLI Arguments
+
+| Argument | Default | Description |
+|---|---|---|
+| `--runs N` | `1` | Number of benchmark runs per variant. Clamped to [1, 100]. Cold cache cleared before each run. |
+
 
 Example output:
 
@@ -138,6 +149,23 @@ Test 2/7 [NOLOCK]
   ⚡ Best by CPU:            [JOIN→EXISTS] — 10ms
   💾 Best by memory grant:  [JOIN→EXISTS] — 256 KB
   ⚠️  SpillToTempDb:         [NOLOCK]
+```
+
+Example output with `--runs 3`:
+
+```
+Test 1/7 [JOIN→EXISTS] (3 runs)
+⏱️  Time: 0.0191s mean ± 0.0012s (median: 0.0188s)
+⚡ CPU: 10ms mean ± 1ms (median: 10ms)
+📊 IO: 45 logical reads (median), 0 physical reads (median)
+💾 Memory grant: 256 KB
+...
+
+🏆 RANKING:
+  ⏱️  Best by time (median):  [JOIN→EXISTS] — 0.0188s
+  📊 Best by IO (median):     [JOIN→EXISTS] — 45 logical reads
+  ⚡ Best by CPU (median):    [JOIN→EXISTS] — 10ms
+  💾 Best by memory grant:   [JOIN→EXISTS] — 256 KB
 ```
 
 ---
@@ -170,11 +198,13 @@ Test 2/7 [NOLOCK]
 6. **`runner.py`** — per-variant execution flow:
    - Clears buffer pool and plan cache (`DBCC DROPCLEANBUFFERS` / `DBCC FREEPROCCACHE`) — graceful degradation if permission missing
    - Enables `SET STATISTICS IO ON` and `SET STATISTICS TIME ON` to collect logical/physical reads and CPU/elapsed time from `cursor.messages`; if the ODBC driver does not populate messages (e.g. ODBC Driver 18), falls back to runtime stats extracted from the XML execution plan
-   - Enables `SET STATISTICS XML ON` to capture the actual execution plan as an additional result set — graceful degradation if `SHOWPLAN` permission missing
+   - With `collect_plan=True` (default): enables `SET STATISTICS XML ON` to capture the actual execution plan — graceful degradation if `SHOWPLAN` permission missing; also queries `sys.query_store_runtime_stats`; for multi-run benchmarks, subsequent runs use `collect_plan=False` to reduce overhead
    - Executes the query, measures wall-clock time
-   - Optionally queries `sys.query_store_runtime_stats` for historical DMV metrics — graceful degradation if Query Store is disabled
    - Returns a dict with all collected metrics
-7. **`stats_parser.py`** — pure functions for parsing SQL Server diagnostic output:
+7. **`aggregator.py`** — pure aggregation for multi-run benchmarks:
+   - `compute_stats(values)` — computes mean / median / stdev / min / max using `statistics` stdlib; returns `None` for empty input, `stdev=0.0` for single value
+   - `aggregate_runs(run_results)` — aggregates `time` and `server_metrics` across N runs, preserves execution plan / Query Store from the first run, skips error runs
+8. **`stats_parser.py`** — pure functions for parsing SQL Server diagnostic output:
    - `parse_io_stats(messages)` — regex parser for `SET STATISTICS IO` output; sums metrics across all tables (handles JOIN scenarios)
    - `parse_time_stats(messages)` — regex parser for `SET STATISTICS TIME` execution times (excludes parse/compile phase)
    - `parse_execution_plan(xml_string)` — XML parser for actual execution plan; extracts `MemoryGrant`, `SpillToTempDb` warnings, physical operator list, and runtime stats (`QueryTimeStats`, `RunTimeCountersPerThread`)
@@ -192,6 +222,7 @@ AutoResearch_SQLServer/
 ├── guardrails.py        # Static AST safety checks (G1, G2, G4)
 ├── validator.py         # Runtime row count validation
 ├── runner.py            # Query executor: SET STATISTICS, metrics, Query Store
+├── aggregator.py        # Pure aggregation: compute_stats(), aggregate_runs()
 ├── stats_parser.py      # Pure parsers: IO/TIME regex, XML plan
 ├── db.py                # SQL Server connection factory
 ├── GUARDRAILS.md        # Guardrail rule reference
@@ -200,7 +231,8 @@ AutoResearch_SQLServer/
 │   ├── test_variants.py      # Unit tests for variant generator
 │   ├── test_db.py            # Unit tests for connection factory (mocked)
 │   ├── test_guardrails.py    # Unit tests for guardrails module
-│   └── test_validator.py     # Unit tests for validator module (mocked DB)
+│   ├── test_validator.py     # Unit tests for validator module (mocked DB)
+│   └── test_aggregator.py    # Unit tests for aggregator module
 ├── plans/               # Actual execution plans as .sqlplan (generated)
 ├── .env.example         # Environment variable template (commit this)
 ├── pytest.ini           # pytest configuration
@@ -212,7 +244,7 @@ AutoResearch_SQLServer/
 
 ### `results.json` format
 
-Each entry in the results array now includes server-side metrics:
+**Single run (`--runs 1`, default)** — flat format, backward-compatible:
 
 ```json
 {
@@ -244,6 +276,37 @@ Each entry in the results array now includes server-side metrics:
     "message": "OK"
   },
   "guardrail_warnings": []
+}
+```
+
+**Multiple runs (`--runs N`)** — aggregated format with `raw_runs`:
+
+```json
+{
+  "label": "JOIN→EXISTS",
+  "query": "SELECT ...",
+  "runs": 3,
+  "time": {
+    "mean": 0.1912,
+    "median": 0.1884,
+    "stdev": 0.0121,
+    "min": 0.1801,
+    "max": 0.2051
+  },
+  "server_metrics": {
+    "cpu_time_ms": { "mean": 15.0, "median": 15.0, "stdev": 0.0, "min": 15, "max": 15 },
+    "logical_reads": { "mean": 689.0, "median": 689.0, "stdev": 0.0, "min": 689, "max": 689 }
+  },
+  "execution_plan_file": "plans/plan_variant_1.sqlplan",
+  "query_store": { ... },
+  "warnings": [],
+  "validation": { ... },
+  "guardrail_warnings": [],
+  "raw_runs": [
+    { "time": 0.1801, "server_metrics": { "cpu_time_ms": 15, "logical_reads": 689 } },
+    { "time": 0.1884, "server_metrics": { "cpu_time_ms": 15, "logical_reads": 689 } },
+    { "time": 0.2051, "server_metrics": { "cpu_time_ms": 15, "logical_reads": 689 } }
+  ]
 }
 ```
 
