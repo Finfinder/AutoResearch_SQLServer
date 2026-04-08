@@ -4,7 +4,7 @@
 [![SQL Server](https://img.shields.io/badge/SQL%20Server-ODBC%2017-CC2927?logo=microsoftsqlserver&logoColor=white)](https://learn.microsoft.com/en-us/sql/connect/odbc/microsoft-odbc-driver-for-sql-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Automated SQL query performance researcher for Microsoft SQL Server. Takes a base SQL query, generates structural variants (JOIN→EXISTS, TOP, NOLOCK, RECOMPILE), benchmarks each against a live database, and reports the fastest one. Additionally collects server-side metrics: IO (logical/physical reads), CPU time, memory grants and actual execution plans via SQL Server's built-in diagnostics — enabling multi-criteria ranking beyond wall-clock time alone.
+Automated SQL query performance researcher for Microsoft SQL Server. Takes a base SQL query, generates structural variants (JOIN→EXISTS, NOLOCK, RECOMPILE), benchmarks each against a live database, and reports the fastest one. Additionally collects server-side metrics: IO (logical/physical reads), CPU time, memory grants and actual execution plans via SQL Server's built-in diagnostics — enabling multi-criteria ranking beyond wall-clock time alone.
 
 ---
 
@@ -111,24 +111,21 @@ python main.py
 The tool will:
 1. Load the base query from `query.sql`
 2. Generate structural variants via `variants.py`
-3. Execute each variant with `SET STATISTICS IO ON`, `SET STATISTICS TIME ON`, and `SET STATISTICS XML ON`
-4. Display per-variant server-side metrics (IO, CPU, memory grant)
-5. Save all results (including server metrics) to `results.json`
-6. Save actual execution plans as `.sqlplan` files to `plans/` (openable in SSMS)
-7. Print a multi-criteria ranking (time, IO, CPU, memory grant)
+3. Validate each variant: static guardrails (AST) then runtime row count check — blocked variants are skipped
+4. Execute each valid variant with `SET STATISTICS IO ON`, `SET STATISTICS TIME ON`, and `SET STATISTICS XML ON`
+5. Display per-variant server-side metrics (IO, CPU, memory grant)
+6. Save all results (including validation info) to `results.json`
+7. Save actual execution plans as `.sqlplan` files to `plans/` (openable in SSMS)
+8. Print a multi-criteria ranking (time, IO, CPU, memory grant)
 
 Example output:
 
 ```
-Test 1/8 [JOIN→EXISTS]
+Test 1/7 [JOIN→EXISTS]
 ⏱️  Time: 0.0187s (server: 10ms CPU / 18ms elapsed)
 📊 IO: 45 logical reads, 0 physical reads
 💾 Memory grant: 256 KB
-Test 2/8 [TOP 1000]
-⏱️  Time: 0.2694s (server: 15ms CPU / 267ms elapsed)
-📊 IO: 689 logical reads, 0 physical reads
-💾 Memory grant: 1024 KB
-Test 3/8 [NOLOCK]
+Test 2/7 [NOLOCK]
 ⏱️  Time: 0.0245s (server: 12ms CPU / 24ms elapsed)
 📊 IO: 60 logical reads, 0 physical reads
 💾 Memory grant: 256 KB
@@ -151,7 +148,6 @@ Test 3/8 [NOLOCK]
 2. **`query.sql`** — base SQL query to optimize.
 3. **`variants.py`** — dynamically generates structural variants of the base query using `sqlglot` AST parsing. Parses any T-SQL query, detects structural patterns, and applies transformations:
    - `JOIN→EXISTS` — replaces INNER JOINs with correlated `WHERE EXISTS` subqueries
-   - `TOP N` — adds `SELECT TOP 1000` when no limit is present
    - `NOLOCK` — adds `WITH (NOLOCK)` hint to all tables
    - `RECOMPILE` — appends `OPTION (RECOMPILE)` to force fresh execution plan
    - `IN→EXISTS` — replaces `IN (subquery)` with `EXISTS`
@@ -164,18 +160,25 @@ Test 3/8 [NOLOCK]
    - `Index suggestions` — prepends `-- Consider index on [schema].[table]([col])` comments based on WHERE/JOIN ON column analysis
 
    Each variant is labeled with its transformation name (e.g. `JOIN→EXISTS`, `HASH JOIN`). The maximum number of variants is controlled by the `MAX_VARIANTS` environment variable (default: `60`).
-4. **`runner.py`** — per-variant execution flow:
+4. **`guardrails.py`** — static safety checks using `sqlglot` AST analysis. Runs before each variant is benchmarked:
+   - **G1** `no_limit_added` — blocks variants that add `TOP N` / `LIMIT` not present in the base query
+   - **G2** `no_where_removed` — blocks variants that drop the `WHERE` clause entirely (UNION variants are exempt)
+   - **G4** `nolock_warning` — warns (does not block) variants using `WITH (NOLOCK)`
+
+   See [GUARDRAILS.md](GUARDRAILS.md) for the full rule reference.
+5. **`validator.py`** — runtime semantic validation. Before benchmarking, computes `SELECT COUNT(*) FROM (<variant>) AS _v` and compares it against the base query row count. Mismatches block the variant. Failures degrade gracefully (warning printed, variant not blocked).
+6. **`runner.py`** — per-variant execution flow:
    - Clears buffer pool and plan cache (`DBCC DROPCLEANBUFFERS` / `DBCC FREEPROCCACHE`) — graceful degradation if permission missing
    - Enables `SET STATISTICS IO ON` and `SET STATISTICS TIME ON` to collect logical/physical reads and CPU/elapsed time from `cursor.messages`; if the ODBC driver does not populate messages (e.g. ODBC Driver 18), falls back to runtime stats extracted from the XML execution plan
    - Enables `SET STATISTICS XML ON` to capture the actual execution plan as an additional result set — graceful degradation if `SHOWPLAN` permission missing
    - Executes the query, measures wall-clock time
    - Optionally queries `sys.query_store_runtime_stats` for historical DMV metrics — graceful degradation if Query Store is disabled
    - Returns a dict with all collected metrics
-5. **`stats_parser.py`** — pure functions for parsing SQL Server diagnostic output:
+7. **`stats_parser.py`** — pure functions for parsing SQL Server diagnostic output:
    - `parse_io_stats(messages)` — regex parser for `SET STATISTICS IO` output; sums metrics across all tables (handles JOIN scenarios)
    - `parse_time_stats(messages)` — regex parser for `SET STATISTICS TIME` execution times (excludes parse/compile phase)
    - `parse_execution_plan(xml_string)` — XML parser for actual execution plan; extracts `MemoryGrant`, `SpillToTempDb` warnings, physical operator list, and runtime stats (`QueryTimeStats`, `RunTimeCountersPerThread`)
-6. **`db.py`** — connection factory using ODBC Driver 17.
+8. **`db.py`** — connection factory using ODBC Driver 17.
 
 ---
 
@@ -186,13 +189,18 @@ AutoResearch_SQLServer/
 ├── main.py              # Entry point — orchestrator
 ├── query.sql            # Base SQL query to optimize
 ├── variants.py          # Query variant generator
+├── guardrails.py        # Static AST safety checks (G1, G2, G4)
+├── validator.py         # Runtime row count validation
 ├── runner.py            # Query executor: SET STATISTICS, metrics, Query Store
 ├── stats_parser.py      # Pure parsers: IO/TIME regex, XML plan
 ├── db.py                # SQL Server connection factory
+├── GUARDRAILS.md        # Guardrail rule reference
 ├── tests/
 │   ├── test_stats_parser.py  # Unit tests for parsers (no DB needed)
 │   ├── test_variants.py      # Unit tests for variant generator
-│   └── test_db.py            # Unit tests for connection factory (mocked)
+│   ├── test_db.py            # Unit tests for connection factory (mocked)
+│   ├── test_guardrails.py    # Unit tests for guardrails module
+│   └── test_validator.py     # Unit tests for validator module (mocked DB)
 ├── plans/               # Actual execution plans as .sqlplan (generated)
 ├── .env.example         # Environment variable template (commit this)
 ├── pytest.ini           # pytest configuration
@@ -228,7 +236,14 @@ Each entry in the results array now includes server-side metrics:
     "avg_physical_io_reads": 0.0,
     "avg_memory_grant_kb": 8192
   },
-  "warnings": []
+  "warnings": [],
+  "validation": {
+    "is_valid": true,
+    "base_count": 1234,
+    "variant_count": 1234,
+    "message": "OK"
+  },
+  "guardrail_warnings": []
 }
 ```
 

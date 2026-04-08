@@ -2,7 +2,10 @@
 import json
 import sys
 from pathlib import Path
+from db import get_connection
+from guardrails import check_variant
 from runner import run_query
+from validator import get_row_count, validate_row_count
 from variants import generate_variants, VariantGenerationError
 
 
@@ -81,6 +84,57 @@ def _print_ranking(results):
         print(f"  ⚠️  SpillToTempDb:         {spill_str}")
 
 
+def _compute_base_count(base_query):
+    try:
+        conn = get_connection()
+        try:
+            count = get_row_count(base_query, conn)
+            print(f"ℹ️  Base row count: {count}")
+            return count, conn
+        except Exception as exc:
+            conn.close()
+            print(f"⚠️  Could not compute base row count — runtime validation disabled: {exc}", file=sys.stderr)
+            return None, None
+    except Exception as exc:
+        print(f"⚠️  Could not open connection for row count — runtime validation disabled: {exc}", file=sys.stderr)
+        return None, None
+
+
+def _check_guardrails(base_query, query, label):
+    violations = check_variant(base_query, query, label)
+    block_violations = [v for v in violations if v.severity == "block"]
+    warn_violations = [v for v in violations if v.severity == "warn"]
+
+    if block_violations:
+        for v in block_violations:
+            print(f"🚫 Guardrail [{v.rule_id}] blocked [{label}]: {v.message}")
+        return [], True
+
+    warnings = [v.message for v in warn_violations]
+    for msg in warnings:
+        print(f"⚠️  Guardrail [{label}]: {msg}")
+    return warnings, False
+
+
+def _check_row_count(base_count, query, label, val_conn):
+    if base_count is None or val_conn is None:
+        return None, False
+
+    val_result = validate_row_count(base_count, query, val_conn)
+    validation_info = {
+        "is_valid": val_result.is_valid,
+        "base_count": val_result.base_count,
+        "variant_count": val_result.variant_count,
+        "message": val_result.message,
+    }
+    if not val_result.is_valid:
+        print(f"🚫 Row count mismatch blocked [{label}]: {val_result.message}")
+        return validation_info, True
+    if val_result.variant_count == -1:
+        print(f"⚠️  [{label}]: {val_result.message}")
+    return validation_info, False
+
+
 def main():
     base_query = load_query()
 
@@ -94,34 +148,53 @@ def main():
         print("ℹ️  No variants generated for this query.")
         return
 
+    base_count, val_conn = _compute_base_count(base_query)
+
     all_results = []
     json_results = []
 
-    for i, (label, query) in enumerate(variants):
-        result = run_query(query)
+    try:
+        for i, (label, query) in enumerate(variants):
+            guardrail_warnings, blocked = _check_guardrails(base_query, query, label)
+            if blocked:
+                continue
 
-        if result["error"]:
-            print(f"Test {i+1}/{len(variants)} [{label}]")
-            print(f"❌ Error: {result['error']}")
-            continue
+            validation_info, blocked = _check_row_count(base_count, query, label, val_conn)
+            if blocked:
+                continue
 
-        _print_variant_result(result, i + 1, len(variants), label)
+            result = run_query(query)
 
-        plan_file = None
-        if result.get("plan_xml"):
-            plan_file = _save_plan(result["plan_xml"], i + 1)
+            if result["error"]:
+                print(f"Test {i+1}/{len(variants)} [{label}]")
+                print(f"❌ Error: {result['error']}")
+                continue
 
-        all_results.append({**result, "label": label})
-        json_results.append({
-            "label": label,
-            "query": query,
-            "time": result["time"],
-            "server_metrics": result.get("server_metrics", {}),
-            "execution_plan": result.get("execution_plan", {}),
-            "execution_plan_file": plan_file,
-            "query_store": result.get("query_store"),
-            "warnings": result.get("warnings", []),
-        })
+            _print_variant_result(result, i + 1, len(variants), label)
+
+            plan_file = None
+            if result.get("plan_xml"):
+                plan_file = _save_plan(result["plan_xml"], i + 1)
+
+            all_results.append({**result, "label": label})
+            # "warnings" merges runner warnings + guardrail warnings for backward-compatible consumers.
+            # "guardrail_warnings" retains the guardrail subset separately for finer-grained inspection.
+            combined_warnings = result.get("warnings", []) + guardrail_warnings
+            json_results.append({
+                "label": label,
+                "query": query,
+                "time": result["time"],
+                "server_metrics": result.get("server_metrics", {}),
+                "execution_plan": result.get("execution_plan", {}),
+                "execution_plan_file": plan_file,
+                "query_store": result.get("query_store"),
+                "warnings": combined_warnings,
+                "validation": validation_info,
+                "guardrail_warnings": guardrail_warnings,
+            })
+    finally:
+        if val_conn is not None:
+            val_conn.close()
 
     _print_ranking(all_results)
     save_results(json_results)

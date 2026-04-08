@@ -9,7 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `guardrails.py` — static AST-based variant safety checks using `sqlglot`: G1 (`no_limit_added` — blocks TOP/LIMIT), G2 (`no_where_removed` — blocks WHERE removal), G4 (`nolock_warning` — warns on NOLOCK)
+- `validator.py` — runtime row count validator: compares `SELECT COUNT(*) FROM (<base>) AS _v` against each variant before benchmarking; mismatches block the variant with graceful degradation on failure
+- `GUARDRAILS.md` — human-readable reference for guardrail rules, rationale, and guidance for adding new transforms
+- `tests/test_guardrails.py` — 14 unit tests covering all guardrail rules (G1, G2, G4), edge cases (UNION exemption, SQL comments, unparseable SQL)
+- `tests/test_validator.py` — 10 unit tests covering `get_row_count()` and `validate_row_count()` with mocked DB connections
 - `TestCrossApply` class in `tests/test_variants.py` (3 tests) — covers `_transform_cross_apply`: produces `CROSS APPLY` label, SQL contains `CROSS APPLY` keyword, no variant produced when JOIN has no subquery
+
+### Changed
+
+- `main.py` — integrated guardrails and runtime validation: static check and row count check run before each `run_query()` call; blocked variants are skipped with 🚫 log; base row count computed once before the loop; connection reused across all validations and closed in `finally`; `results.json` entries extended with `validation` and `guardrail_warnings` fields
+- `validator.py` — strip trailing `OPTION (...)` clauses before wrapping query in `COUNT(*)` subquery; OPTION hints (RECOMPILE, HASH JOIN, MERGE JOIN, LOOP JOIN) are invalid inside subqueries in T-SQL but don't affect row counts
+
+### Removed
+
+- `_transform_top_n` function and its entry in `_TRANSFORMS` list in `variants.py` — TOP N reduces the result set and is not a semantically equivalent optimisation; `TestTopN` class (3 tests) removed from `tests/test_variants.py`
 
 ### Changed
 
