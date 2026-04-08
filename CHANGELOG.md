@@ -9,7 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `requirements-dev.txt` — dev-only dependencies file referencing `requirements.txt` and adding `pytest>=7.0` and `pytest-cov`; keeps testing tools separate from runtime dependencies
+- `TestCrossApply` class in `tests/test_variants.py` (3 tests) — covers `_transform_cross_apply`: produces `CROSS APPLY` label, SQL contains `CROSS APPLY` keyword, no variant produced when JOIN has no subquery
+
+### Changed
+
+- `variants.py` — Cognitive Complexity refactor across 4 functions (all now ≤15):
+  - Extracted `_attach_exists_to_where(ast_c, exists_expr)` module-level helper — used by `_transform_join_to_exists` (CC: 17→14)
+  - Extracted `_build_correlated_exists(inner_select, inner_col, outer_col)` module-level helper — used by `_transform_in_to_exists` (CC: 17→13)
+  - Extracted `_full_table_name(tbl)`, `_build_alias_map(ast)`, `_collect_cols_from(node, alias_map, candidates)` as module-level helpers — replaces nested closure pattern in `_collect_index_candidates` (CC: 31→8)
+  - Extracted `_apply_transforms(ast, transform_fns)` module-level helper — used by `generate_variants` (CC: 16→9)
+- `tests/test_variants.py` — branch coverage of `variants.py` improved from 82% to 89% due to `TestCrossApply` addition
+
+### Fixed
+
+- `variants.py` — `_transform_join_hints`: join hints are now emitted as `OPTION (HASH JOIN / MERGE JOIN / LOOP JOIN)` query hints instead of inline `method` attribute on the JOIN node; the inline form generated invalid T-SQL (`HASH JOIN t2 ...` without the required `INNER` keyword), causing SQL Server error 102
+
+### Changed (gitignore)
+
+- `.gitignore` — added `plans/` and `results.json` to ignored paths; both are runtime-generated artefacts and should not be version-controlled
+- Removed `plans/plan_variant_*.sqlplan` and `results.json` from git tracking (`git rm --cached`)
+
+- `sqlglot>=26.0` dependency — SQL parser for AST-based query transformations (zero transitive dependencies)
+- `VariantGenerationError` exception in `variants.py` with structured fields: `line`, `col`, `fragment`, `suggestion` — raised when the base query cannot be parsed; provides precise error location for diagnosis
+- 8 new SQL transformations in `variants.py`: `IN→EXISTS`, `OR→UNION ALL`, `DISTINCT→GROUP BY`, `Subquery→CTE`, `JOIN reorder`, `CROSS APPLY`, `HASH/MERGE/LOOP JOIN hints`, `Index suggestions`
+- `MAX_VARIANTS` environment variable (default: `60`) — caps the number of generated variants per run; prints a warning on truncation
+- `"label"` field in `results.json` — each result entry now includes the transformation name (e.g. `"JOIN→EXISTS"`, `"HASH JOIN"`)
+
+### Changed
+
+- `variants.py` — full rewrite: replaced 4 hardcoded `str.replace()` transformations with a dynamic AST-based generator using `sqlglot`. Generator parses any T-SQL query, detects structural patterns, and applies transformations automatically. Interface changed from `list[str]` to `list[tuple[str, str]]` (label, SQL).
+- `main.py` — updated to handle the new `list[tuple[str, str]]` interface: iterates as `(label, query)`, displays transformation labels in test headers and ranking, adds `"label"` to `results.json`, catches `VariantGenerationError` with `sys.exit(1)`, handles empty variant list gracefully
+- `tests/test_variants.py` — full rewrite: 48 unit tests covering all 12 transforms (pattern detected / pattern absent), `VariantGenerationError` fields, `MAX_VARIANTS` limit, interface contract, and SQL validity via `sqlglot.parse_one()` round-trip
+
+
 - `pytest.ini` — formal pytest configuration with `pythonpath = .` (eliminates `sys.path` hacks), `testpaths = tests`, and test discovery patterns consistent with existing test conventions
 - `tests/test_variants.py` — 6 unit tests for `generate_variants()` covering all 4 structural transformations (JOIN→EXISTS, TOP, NOLOCK, RECOMPILE) and the no-match edge case; no mocks required (pure function)
 - `tests/test_db.py` — 6 unit tests for `get_connection()` covering env var validation (missing all / missing one), default and custom ODBC driver, connection string format, and return value; `pyodbc.connect` is fully mocked — no real database connection required

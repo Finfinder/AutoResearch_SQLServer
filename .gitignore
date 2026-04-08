@@ -208,3 +208,7 @@ __marimo__/
 
 # Internal issue/task documentation
 .github/Issue/
+
+# Generated execution plans (runtime artefacts)
+plans/
+results.json

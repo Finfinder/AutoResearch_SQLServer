@@ -21,7 +21,7 @@ Automated SQL query performance researcher for Microsoft SQL Server. Takes a bas
 - Python 3.10+
 - Microsoft SQL Server (local or remote)
 - [ODBC Driver 17 for SQL Server](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server)
-- Python packages: `pyodbc`, `python-dotenv`
+- Python packages: `pyodbc`, `python-dotenv`, `sqlglot`
 
 > **Note**: Before each benchmark run, the tool executes `DBCC DROPCLEANBUFFERS` and `DBCC FREEPROCCACHE` to ensure cold-cache conditions. This requires the `ALTER SERVER STATE` permission (or `sysadmin` role).
 >
@@ -120,30 +120,27 @@ The tool will:
 Example output:
 
 ```
-Test 1/4
-⏱️  Time: 0.2694s (server: 15ms CPU / 267ms elapsed)
-📊 IO: 689 logical reads, 0 physical reads
-💾 Memory grant: 1024 KB
-Test 2/4
+Test 1/8 [JOIN→EXISTS]
 ⏱️  Time: 0.0187s (server: 10ms CPU / 18ms elapsed)
 📊 IO: 45 logical reads, 0 physical reads
 💾 Memory grant: 256 KB
-Test 3/4
+Test 2/8 [TOP 1000]
+⏱️  Time: 0.2694s (server: 15ms CPU / 267ms elapsed)
+📊 IO: 689 logical reads, 0 physical reads
+💾 Memory grant: 1024 KB
+Test 3/8 [NOLOCK]
 ⏱️  Time: 0.0245s (server: 12ms CPU / 24ms elapsed)
 📊 IO: 60 logical reads, 0 physical reads
 💾 Memory grant: 256 KB
 ⚠️  SpillToTempDb detected!
-Test 4/4
-⏱️  Time: 0.0298s (server: 14ms CPU / 30ms elapsed)
-📊 IO: 55 logical reads, 0 physical reads
-💾 Memory grant: 512 KB
+...
 
 🏆 RANKING:
-  ⏱️  Best by time:         variant 2 — 0.0187s
-  📊 Best by IO:            variant 2 — 45 logical reads
-  ⚡ Best by CPU:            variant 2 — 10ms
-  💾 Best by memory grant:  variant 2 — 256 KB
-  ⚠️  SpillToTempDb:         variant 3
+  ⏱️  Best by time:         [JOIN→EXISTS] — 0.0187s
+  📊 Best by IO:            [JOIN→EXISTS] — 45 logical reads
+  ⚡ Best by CPU:            [JOIN→EXISTS] — 10ms
+  💾 Best by memory grant:  [JOIN→EXISTS] — 256 KB
+  ⚠️  SpillToTempDb:         [NOLOCK]
 ```
 
 ---
@@ -152,11 +149,21 @@ Test 4/4
 
 1. **`main.py`** — orchestrator: loads the query, generates variants, runs benchmarks, displays per-variant metrics, saves results to `results.json`, saves execution plans to `plans/`, and prints the multi-criteria ranking.
 2. **`query.sql`** — base SQL query to optimize.
-3. **`variants.py`** — generates structural variants of the base query using string transformations:
-   - `JOIN` → `EXISTS` subquery
-   - Adding `TOP N` to limit result set
-   - `WITH (NOLOCK)` hint (dirty reads, use with caution)
-   - `OPTION (RECOMPILE)` to force fresh execution plan
+3. **`variants.py`** — dynamically generates structural variants of the base query using `sqlglot` AST parsing. Parses any T-SQL query, detects structural patterns, and applies transformations:
+   - `JOIN→EXISTS` — replaces INNER JOINs with correlated `WHERE EXISTS` subqueries
+   - `TOP N` — adds `SELECT TOP 1000` when no limit is present
+   - `NOLOCK` — adds `WITH (NOLOCK)` hint to all tables
+   - `RECOMPILE` — appends `OPTION (RECOMPILE)` to force fresh execution plan
+   - `IN→EXISTS` — replaces `IN (subquery)` with `EXISTS`
+   - `OR→UNION ALL` — splits OR conditions into separate queries with `UNION ALL`
+   - `DISTINCT→GROUP BY` — replaces `SELECT DISTINCT` with `GROUP BY`
+   - `Subquery→CTE` — extracts subqueries from FROM clause into `WITH` CTEs
+   - `JOIN reorder` — swaps the order of first and last INNER JOIN (when ≥2 JOINs)
+   - `CROSS APPLY` — converts JOIN with subquery to `CROSS APPLY`
+   - `HASH/MERGE/LOOP JOIN` — generates three variants with join-method hints
+   - `Index suggestions` — prepends `-- Consider index on [schema].[table]([col])` comments based on WHERE/JOIN ON column analysis
+
+   Each variant is labeled with its transformation name (e.g. `JOIN→EXISTS`, `HASH JOIN`). The maximum number of variants is controlled by the `MAX_VARIANTS` environment variable (default: `60`).
 4. **`runner.py`** — per-variant execution flow:
    - Clears buffer pool and plan cache (`DBCC DROPCLEANBUFFERS` / `DBCC FREEPROCCACHE`) — graceful degradation if permission missing
    - Enables `SET STATISTICS IO ON` and `SET STATISTICS TIME ON` to collect logical/physical reads and CPU/elapsed time from `cursor.messages`; if the ODBC driver does not populate messages (e.g. ODBC Driver 18), falls back to runtime stats extracted from the XML execution plan
@@ -201,6 +208,7 @@ Each entry in the results array now includes server-side metrics:
 
 ```json
 {
+  "label": "JOIN→EXISTS",
   "query": "SELECT ...",
   "time": 0.2694,
   "server_metrics": {
@@ -230,22 +238,26 @@ Each entry in the results array now includes server-side metrics:
 
 ## Customizing Variants
 
-Edit `generate_variants()` in `variants.py` to add custom transformations. Each variant is a string transformation of the base query:
+`variants.py` uses `sqlglot` to parse the base query into an AST and applies a registry of transform functions. To add a new transformation, define a function following this pattern and add it to the `_TRANSFORMS` list:
 
 ```python
-def generate_variants(base_query):
-    variants = []
-
-    # Add your transformations here
-    variants.append(base_query.replace(
-        "JOIN [Sales].[Customer] c ON o.[CustomerID] = c.[CustomerID]",
-        "WHERE EXISTS (SELECT 1 FROM [Sales].[Customer] c WHERE c.[CustomerID] = o.[CustomerID])"
-    ))
-
-    return variants
+def _transform_my_hint(ast):
+    # 1. Detect pattern — return [] if not applicable
+    if not ast.find(exp.SomeNode):
+        return []
+    # 2. Copy the AST and modify the copy (never mutate the original)
+    ast_c = ast.copy()
+    # ... apply transformation ...
+    return [("My hint label", ast_c)]
 ```
 
-The transformations are query-specific — adapt them to match the structure of your base query in `query.sql`.
+All transforms are automatically applied by the `generate_variants()` orchestrator. Transforms that don't detect their pattern return an empty list and are silently skipped.
+
+The `MAX_VARIANTS` environment variable (default: `60`) caps the total number of variants per run. Set it to limit DB load for complex queries:
+
+```bash
+MAX_VARIANTS=20 python main.py
+```
 
 ---
 
