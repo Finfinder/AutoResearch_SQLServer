@@ -1,8 +1,9 @@
 # main.py
 import json
+import sys
 from pathlib import Path
 from runner import run_query
-from variants import generate_variants
+from variants import generate_variants, VariantGenerationError
 
 
 def load_query():
@@ -23,8 +24,8 @@ def _save_plan(plan_xml, variant_index):
     return str(plan_path)
 
 
-def _print_variant_result(result, index, total):
-    print(f"Test {index}/{total}")
+def _print_variant_result(result, index, total, label):
+    print(f"Test {index}/{total} [{label}]")
     sm = result.get("server_metrics", {})
     ep = result.get("execution_plan", {})
     cpu = sm.get("cpu_time_ms")
@@ -53,60 +54,66 @@ def _print_ranking(results):
     valid = [r for r in results if r.get("time") is not None]
     if valid:
         best_time = min(valid, key=lambda r: r["time"])
-        idx = results.index(best_time) + 1
-        print(f"  ⏱️  Best by time:         variant {idx} — {best_time['time']:.4f}s")
+        print(f"  ⏱️  Best by time:         [{best_time['label']}] — {best_time['time']:.4f}s")
     logical_results = [
         r for r in results if r.get("server_metrics", {}).get("logical_reads") is not None
     ]
     if logical_results:
         best_io = min(logical_results, key=lambda r: r["server_metrics"]["logical_reads"])
-        idx = results.index(best_io) + 1
-        print(f"  📊 Best by IO:            variant {idx} — {best_io['server_metrics']['logical_reads']} logical reads")
+        print(f"  📊 Best by IO:            [{best_io['label']}] — {best_io['server_metrics']['logical_reads']} logical reads")
     cpu_results = [
         r for r in results if r.get("server_metrics", {}).get("cpu_time_ms") is not None
     ]
     if cpu_results:
         best_cpu = min(cpu_results, key=lambda r: r["server_metrics"]["cpu_time_ms"])
-        idx = results.index(best_cpu) + 1
-        print(f"  ⚡ Best by CPU:            variant {idx} — {best_cpu['server_metrics']['cpu_time_ms']}ms")
+        print(f"  ⚡ Best by CPU:            [{best_cpu['label']}] — {best_cpu['server_metrics']['cpu_time_ms']}ms")
     mem_results = [
         r for r in results if r.get("execution_plan", {}).get("memory_grant_kb") is not None
     ]
     if mem_results:
         best_mem = min(mem_results, key=lambda r: r["execution_plan"]["memory_grant_kb"])
-        idx = results.index(best_mem) + 1
-        print(f"  💾 Best by memory grant:  variant {idx} — {best_mem['execution_plan']['memory_grant_kb']} KB")
+        print(f"  💾 Best by memory grant:  [{best_mem['label']}] — {best_mem['execution_plan']['memory_grant_kb']} KB")
     spill_variants = [
-        i + 1 for i, r in enumerate(results) if r.get("execution_plan", {}).get("spill_warnings")
+        r["label"] for r in results if r.get("execution_plan", {}).get("spill_warnings")
     ]
     if spill_variants:
-        spill_str = ", ".join(f"variant {v}" for v in spill_variants)
+        spill_str = ", ".join(f"[{v}]" for v in spill_variants)
         print(f"  ⚠️  SpillToTempDb:         {spill_str}")
 
 
 def main():
     base_query = load_query()
-    variants = generate_variants(base_query)
+
+    try:
+        variants = generate_variants(base_query)
+    except VariantGenerationError as e:
+        print(f"❌ Failed to generate variants: {e}")
+        sys.exit(1)
+
+    if not variants:
+        print("ℹ️  No variants generated for this query.")
+        return
 
     all_results = []
     json_results = []
 
-    for i, query in enumerate(variants):
+    for i, (label, query) in enumerate(variants):
         result = run_query(query)
 
         if result["error"]:
-            print(f"Test {i+1}/{len(variants)}")
+            print(f"Test {i+1}/{len(variants)} [{label}]")
             print(f"❌ Error: {result['error']}")
             continue
 
-        _print_variant_result(result, i + 1, len(variants))
+        _print_variant_result(result, i + 1, len(variants), label)
 
         plan_file = None
         if result.get("plan_xml"):
             plan_file = _save_plan(result["plan_xml"], i + 1)
 
-        all_results.append(result)
+        all_results.append({**result, "label": label})
         json_results.append({
+            "label": label,
             "query": query,
             "time": result["time"],
             "server_metrics": result.get("server_metrics", {}),
