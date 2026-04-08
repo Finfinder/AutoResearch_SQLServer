@@ -5,8 +5,8 @@ def generate_variants(base_query):
 
     # 1. JOIN → EXISTS
     variants.append(base_query.replace(
-        "JOIN [Sales].[Customer] c ON o.[CustomerID] = c.[CustomerID]",
-        "WHERE EXISTS (SELECT 1 FROM [Sales].[Customer] c WHERE c.[CustomerID] = o.[CustomerID])"
+        "JOIN [Sales].[Customer] c ON o.[CustomerID] = c.[CustomerID]\nWHERE",
+        "WHERE EXISTS (SELECT 1 FROM [Sales].[Customer] c WHERE c.[CustomerID] = o.[CustomerID])\nAND"
     ))
 
     # 2. Dodanie TOP (symulacja ograniczenia)
