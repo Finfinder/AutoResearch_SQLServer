@@ -1,10 +1,13 @@
 # db.py
+import logging
 import os
 
 import pyodbc
 from dotenv import load_dotenv
 
 load_dotenv(override=False)
+
+logger = logging.getLogger(__name__)
 
 
 def get_connection():
@@ -30,6 +33,7 @@ def get_connection():
             "Copy .env.example to .env and fill in the values."
         )
 
+    logger.debug("Connecting to %s/%s as %s", server, database, uid)
     return pyodbc.connect(
         f"DRIVER={{{driver}}};"
         f"SERVER={server};"

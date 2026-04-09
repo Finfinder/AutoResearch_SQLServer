@@ -1,8 +1,11 @@
 # runner.py
+import logging
 import re
 import time
 from db import get_connection
 from stats_parser import parse_io_stats, parse_time_stats, parse_execution_plan
+
+logger = logging.getLogger(__name__)
 
 _COMMENT_PATTERN = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
 
@@ -11,11 +14,11 @@ def _clear_cache(cursor):
     try:
         cursor.execute("DBCC DROPCLEANBUFFERS")
     except Exception as e:
-        print(f"⚠️  Warning: DROPCLEANBUFFERS skipped (missing ALTER SERVER STATE permission): {e}")
+        logger.warning("DROPCLEANBUFFERS skipped (missing ALTER SERVER STATE permission): %s", e)
     try:
         cursor.execute("DBCC FREEPROCCACHE")
     except Exception as e:
-        print(f"⚠️  Warning: FREEPROCCACHE skipped (missing ALTER SERVER STATE permission): {e}")
+        logger.warning("FREEPROCCACHE skipped (missing ALTER SERVER STATE permission): %s", e)
 
 
 def _collect_execution_plan(cursor, warnings):
@@ -56,7 +59,7 @@ def run_query(query, collect_plan=True):
             except Exception as e:
                 msg = f"Execution plan unavailable (missing SHOWPLAN permission): {e}"
                 warnings.append(msg)
-                print(f"⚠️  Warning: SET STATISTICS XML skipped: {e}")
+                logger.warning("SET STATISTICS XML skipped: %s", e)
 
         start = time.perf_counter()
         try:

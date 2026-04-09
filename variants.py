@@ -1,8 +1,10 @@
 # variants.py
+import logging
 import os
-import sys
 import sqlglot
 import sqlglot.expressions as exp
+
+logger = logging.getLogger(__name__)
 
 
 class VariantGenerationError(Exception):
@@ -395,7 +397,7 @@ def _apply_transforms(ast, transform_fns):
                 sql = result_ast if isinstance(result_ast, str) else result_ast.sql(dialect="tsql")
                 variants.append((label, sql))
         except Exception as exc:
-            print(f"\u26a0\ufe0f  Transform {transform_fn.__name__} skipped: {exc}", file=sys.stderr)
+            logger.warning("Transform %s skipped: %s", transform_fn.__name__, exc)
     return variants
 
 
@@ -404,7 +406,7 @@ def generate_variants(base_query):
     try:
         max_variants = int(os.getenv("MAX_VARIANTS", "60"))
     except ValueError:
-        print("⚠️  Warning: MAX_VARIANTS must be an integer. Using default of 60.", file=sys.stderr)
+        logger.warning("MAX_VARIANTS must be an integer. Using default of 60.")
     try:
         ast = sqlglot.parse_one(base_query, dialect="tsql")
     except sqlglot.errors.ParseError as e:
@@ -421,9 +423,7 @@ def generate_variants(base_query):
     variants = _apply_transforms(ast, _TRANSFORMS)
 
     if len(variants) > max_variants:
-        print(
-            f"⚠️  Warning: {len(variants)} variants generated, limiting to MAX_VARIANTS={max_variants}."
-        )
+        logger.warning("%d variants generated, limiting to MAX_VARIANTS=%d.", len(variants), max_variants)
         variants = variants[:max_variants]
 
     return variants

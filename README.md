@@ -86,10 +86,40 @@ DB_PWD=your_password
 | `DB_UID` | ✅ | — | SQL Server login (SQL Authentication) |
 | `DB_PWD` | ✅ | — | SQL Server password |
 | `DB_DRIVER` | ❌ | `ODBC Driver 17 for SQL Server` | ODBC driver name |
+| `LOG_LEVEL` | ❌ | `INFO` | Console (stderr) log level. Accepted values: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
 > **Production / Docker**: set the variables directly in the environment (container runtime, secrets manager, CI/CD). Values from the environment always take priority over `.env`.
 
 > **Security**: `.env` is listed in `.gitignore` and must never be committed to the repository.
+
+---
+
+## Logging
+
+The tool uses Python's stdlib `logging` module with two output channels:
+
+| Channel | Content | Format |
+|---|---|---|
+| **stdout** | Benchmark results (times, IO, CPU, memory grant, ranking) | Human-readable with emoji |
+| **stderr** | Diagnostic messages (warnings, errors, info) | `TIMESTAMP LEVEL logger: message` |
+| **`logs/autoresearch_YYYYMMDD_HHMMSS.log`** | Full history — diagnostics AND benchmark results | `TIMESTAMP LEVEL logger: message` |
+
+Each run creates a new timestamped log file in the `logs/` directory (e.g. `logs/autoresearch_20260409_143022.log`). Log files are covered by `*.log` in `.gitignore`.
+
+Control the verbosity of stderr output via the `LOG_LEVEL` environment variable (or `.env`):
+
+```bash
+# Suppress INFO messages (e.g. "Base row count") on stderr
+LOG_LEVEL=WARNING python main.py
+
+# Show all debug details including connection info (no password logged)
+LOG_LEVEL=DEBUG python main.py
+
+# Override inline without editing .env
+LOG_LEVEL=DEBUG python main.py
+```
+
+Invalid values (e.g. `LOG_LEVEL=VERBOSE`) silently fall back to `INFO`.
 
 Place your base SQL query in `query.sql`:
 
