@@ -9,7 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `--runs N` CLI argument — runs each variant N times (default: 1, clamped to [1, 100]); cold cache (`DBCC DROPCLEANBUFFERS` / `DBCC FREEPROCCACHE`) is cleared before each individual run; execution plan and Query Store are collected from the first run only
+- `logging` module integration — stdlib `logging` replaces `print()` for all diagnostic output; two handlers: `StreamHandler(stderr)` at level controlled by `LOG_LEVEL` env var (default `INFO`) and `FileHandler` in `logs/` directory at `DEBUG` level; benchmark results (variant times, IO, CPU, ranking) additionally logged to file via dedicated `benchmark` logger (`propagate=False`)
+- `LOG_LEVEL` environment variable — controls stderr verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`; invalid values fall back to `INFO`); readable from `.env` via `python-dotenv`
+- `logs/autoresearch_YYYYMMDD_HHMMSS.log` — timestamped log file per run capturing full history (diagnostics + benchmark results); each run creates a new file in the `logs/` directory; covered by `*.log` in `.gitignore`
+- `setup_logging()` function in `main.py` — configures loggers and handlers; called as first step in `main()`
+
+### Changed
+
+- `main.py` — diagnostic `print()` calls (`❌`, `⚠️`, `ℹ️`) migrated to `logger.error/warning/info()`; benchmark UI `print()` calls preserved on stdout and duplicated to `result_logger.info()` for file logging
+- `runner.py` — 3 `print()` warning calls migrated to `logger.warning()`
+- `variants.py` — 3 `print(file=sys.stderr)` calls migrated to `logger.warning()`; `import sys` removed
+- `db.py` — `logger.debug()` added before `pyodbc.connect()` to log connection target (server/database/uid — password never logged)
+- `.env.example` — `LOG_LEVEL=INFO` entry added with supported values documented
+
+ — runs each variant N times (default: 1, clamped to [1, 100]); cold cache (`DBCC DROPCLEANBUFFERS` / `DBCC FREEPROCCACHE`) is cleared before each individual run; execution plan and Query Store are collected from the first run only
 - `aggregator.py` — pure aggregation module with `compute_stats(values)` (mean / median / stdev / min / max via `statistics` stdlib) and `aggregate_runs(run_results)` (aggregates `time` and `server_metrics`, preserves execution plan / Query Store from first run, skips error runs)
 - `tests/test_aggregator.py` — 11 unit tests covering `compute_stats` (multi-value, single-value stdev=0, empty→None) and `aggregate_runs` (time/IO aggregation, first-run plan preservation, error run skipping, empty server_metrics, plan-loss edge case)
 
