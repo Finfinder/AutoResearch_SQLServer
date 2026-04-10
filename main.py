@@ -5,6 +5,8 @@ import logging
 import os
 import sys
 from datetime import datetime
+
+import colorlog
 from pathlib import Path
 from dotenv import load_dotenv
 from aggregator import aggregate_runs
@@ -48,7 +50,21 @@ def setup_logging():
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setLevel(numeric_level)
-    stderr_handler.setFormatter(fmt)
+    use_color = sys.stderr.isatty() and "NO_COLOR" not in os.environ
+    if use_color:
+        color_fmt = colorlog.ColoredFormatter(
+            "%(log_color)s%(asctime)s %(levelname)s%(reset)s %(name)s: %(message)s",
+            log_colors={
+                "DEBUG": "white",
+                "INFO": "green",
+                "WARNING": "yellow",
+                "ERROR": "red",
+                "CRITICAL": "bold_red",
+            },
+        )
+        stderr_handler.setFormatter(color_fmt)
+    else:
+        stderr_handler.setFormatter(fmt)
     root.addHandler(stderr_handler)
     logs_dir = Path("logs")
     logs_dir.mkdir(exist_ok=True)

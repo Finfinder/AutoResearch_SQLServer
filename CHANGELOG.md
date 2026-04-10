@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Colored stderr log output — `colorlog` library colors log levels on stderr: DEBUG=white, INFO=green, WARNING=yellow, ERROR=red, CRITICAL=bold_red; automatically disabled when stderr is not a TTY or `NO_COLOR` env var is set (follows [no-color.org](https://no-color.org/)); log files always remain plain text
 - `logging` module integration — stdlib `logging` replaces `print()` for all diagnostic output; two handlers: `StreamHandler(stderr)` at level controlled by `LOG_LEVEL` env var (default `INFO`) and `FileHandler` in `logs/` directory at `DEBUG` level; benchmark results (variant times, IO, CPU, ranking) additionally logged to file via dedicated `benchmark` logger (`propagate=False`)
 - `LOG_LEVEL` environment variable — controls stderr verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`; invalid values fall back to `INFO`); readable from `.env` via `python-dotenv`
 - `logs/autoresearch_YYYYMMDD_HHMMSS.log` — timestamped log file per run capturing full history (diagnostics + benchmark results); each run creates a new file in the `logs/` directory; covered by `*.log` in `.gitignore`
