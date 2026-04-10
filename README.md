@@ -87,6 +87,7 @@ DB_PWD=your_password
 | `DB_PWD` | ✅ | — | SQL Server password |
 | `DB_DRIVER` | ❌ | `ODBC Driver 17 for SQL Server` | ODBC driver name |
 | `LOG_LEVEL` | ❌ | `INFO` | Console (stderr) log level. Accepted values: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `NO_COLOR` | ❌ | _(unset)_ | Set to any value to disable ANSI color codes on stderr (e.g. `NO_COLOR=1`). Follows the [no-color.org](https://no-color.org/) standard. Colors are also disabled automatically when stderr is not a terminal (e.g. piped output). |
 
 > **Production / Docker**: set the variables directly in the environment (container runtime, secrets manager, CI/CD). Values from the environment always take priority over `.env`.
 
@@ -101,8 +102,8 @@ The tool uses Python's stdlib `logging` module with two output channels:
 | Channel | Content | Format |
 |---|---|---|
 | **stdout** | Benchmark results (times, IO, CPU, memory grant, ranking) | Human-readable with emoji |
-| **stderr** | Diagnostic messages (warnings, errors, info) | `TIMESTAMP LEVEL logger: message` |
-| **`logs/autoresearch_YYYYMMDD_HHMMSS.log`** | Full history — diagnostics AND benchmark results | `TIMESTAMP LEVEL logger: message` |
+| **stderr** | Diagnostic messages (warnings, errors, info) | Colored by log level (white=DEBUG, green=INFO, yellow=WARNING, red=ERROR, bold_red=CRITICAL) when terminal is detected |
+| **`logs/autoresearch_YYYYMMDD_HHMMSS.log`** | Full history — diagnostics AND benchmark results | `TIMESTAMP LEVEL logger: message` (plain text, no color codes) |
 
 Each run creates a new timestamped log file in the `logs/` directory (e.g. `logs/autoresearch_20260409_143022.log`). Log files are covered by `*.log` in `.gitignore`.
 
