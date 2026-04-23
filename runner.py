@@ -39,8 +39,10 @@ def _collect_execution_plan(cursor, warnings):
     return plan_xml, execution_plan
 
 
-def run_query(query, collect_plan=True):
-    conn = get_connection()
+def run_query(query, collect_plan=True, conn=None):
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
     cursor = None
     try:
         cursor = conn.cursor()
@@ -109,7 +111,8 @@ def run_query(query, collect_plan=True):
             if cursor:
                 cursor.close()
         finally:
-            conn.close()
+            if own_conn:
+                conn.close()
 
 
 def _fetch_query_store(cursor, query_text, warnings):

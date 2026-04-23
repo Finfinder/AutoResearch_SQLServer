@@ -9,7 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Colored stderr log output — `colorlog` library colors log levels on stderr: DEBUG=white, INFO=green, WARNING=yellow, ERROR=red, CRITICAL=bold_red; automatically disabled when stderr is not a TTY or `NO_COLOR` env var is set (follows [no-color.org](https://no-color.org/)); log files always remain plain text
+- Connection pooling — benchmark connection opened once per `main.py` run and reused across all variant/run executions; `run_query` accepts optional `conn` parameter (backward-compatible: omitting `conn` preserves original per-call connection lifecycle); on error per run, connection is closed and a new one is opened before continuing with subsequent runs/variants (logged as INFO); `bench_conn` is always closed in the `finally` block regardless of benchmark outcome
+- `tests/test_runner.py` — unit tests for `run_query` connection lifecycle: verifies external connections are never closed by `run_query`, own connections are always closed, and return format is preserved
+- `tests/test_main_connection_lifecycle.py` — unit tests for `_reset_bench_conn` and `main()` connection lifecycle: verifies reset after error, continuation of benchmark, no unclosed connections after completion
+
+### Changed
+
+- `runner.py` — `run_query` signature extended with `conn=None`; connection is closed in `finally` only when created locally (`own_conn=True`)
+- `main.py` — benchmark connection opened once before variant loop; all `run_query` calls pass `conn=bench_conn`; added `_reset_bench_conn` helper for connection reset after run errors; `bench_conn` closed in `finally` alongside existing `val_conn`
+
+
 - `logging` module integration — stdlib `logging` replaces `print()` for all diagnostic output; two handlers: `StreamHandler(stderr)` at level controlled by `LOG_LEVEL` env var (default `INFO`) and `FileHandler` in `logs/` directory at `DEBUG` level; benchmark results (variant times, IO, CPU, ranking) additionally logged to file via dedicated `benchmark` logger (`propagate=False`)
 - `LOG_LEVEL` environment variable — controls stderr verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`; invalid values fall back to `INFO`); readable from `.env` via `python-dotenv`
 - `logs/autoresearch_YYYYMMDD_HHMMSS.log` — timestamped log file per run capturing full history (diagnostics + benchmark results); each run creates a new file in the `logs/` directory; covered by `*.log` in `.gitignore`
