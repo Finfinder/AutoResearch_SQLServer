@@ -204,6 +204,9 @@ Test 1/7 [JOIN→EXISTS] (3 runs)
 ## How It Works
 
 1. **`main.py`** — orchestrator: loads the query, generates variants, runs benchmarks, displays per-variant metrics, saves results to `results.json`, saves execution plans to `plans/`, and prints the multi-criteria ranking.
+   - Opens a single benchmark ODBC connection before the variant loop and reuses it for all `run_query` calls; this eliminates per-call connect/disconnect overhead and reduces measurement variance.
+   - After a run error, the benchmark connection is closed and a new one is opened before continuing with the next run or variant (logged at INFO). If reconnection fails, `run_query` falls back to its own per-call connection (graceful degradation).
+   - The benchmark connection is always closed in the `finally` block regardless of outcome.
 2. **`query.sql`** — base SQL query to optimize.
 3. **`variants.py`** — dynamically generates structural variants of the base query using `sqlglot` AST parsing. Parses any T-SQL query, detects structural patterns, and applies transformations:
    - `JOIN→EXISTS` — replaces INNER JOINs with correlated `WHERE EXISTS` subqueries
@@ -231,6 +234,7 @@ Test 1/7 [JOIN→EXISTS] (3 runs)
    - Enables `SET STATISTICS IO ON` and `SET STATISTICS TIME ON` to collect logical/physical reads and CPU/elapsed time from `cursor.messages`; if the ODBC driver does not populate messages (e.g. ODBC Driver 18), falls back to runtime stats extracted from the XML execution plan
    - With `collect_plan=True` (default): enables `SET STATISTICS XML ON` to capture the actual execution plan — graceful degradation if `SHOWPLAN` permission missing; also queries `sys.query_store_runtime_stats`; for multi-run benchmarks, subsequent runs use `collect_plan=False` to reduce overhead
    - Executes the query, measures wall-clock time
+   - Accepts an optional `conn` parameter; when a connection is provided externally it is **not** closed by `run_query` — connection lifecycle belongs to the caller; when `conn` is omitted, `run_query` creates and closes its own connection (backward-compatible default)
    - Returns a dict with all collected metrics
 7. **`aggregator.py`** — pure aggregation for multi-run benchmarks:
    - `compute_stats(values)` — computes mean / median / stdev / min / max using `statistics` stdlib; returns `None` for empty input, `stdev=0.0` for single value
@@ -258,12 +262,14 @@ AutoResearch_SQLServer/
 ├── db.py                # SQL Server connection factory
 ├── GUARDRAILS.md        # Guardrail rule reference
 ├── tests/
-│   ├── test_stats_parser.py  # Unit tests for parsers (no DB needed)
-│   ├── test_variants.py      # Unit tests for variant generator
-│   ├── test_db.py            # Unit tests for connection factory (mocked)
-│   ├── test_guardrails.py    # Unit tests for guardrails module
-│   ├── test_validator.py     # Unit tests for validator module (mocked DB)
-│   └── test_aggregator.py    # Unit tests for aggregator module
+│   ├── test_stats_parser.py             # Unit tests for parsers (no DB needed)
+│   ├── test_variants.py                 # Unit tests for variant generator
+│   ├── test_db.py                       # Unit tests for connection factory (mocked)
+│   ├── test_guardrails.py               # Unit tests for guardrails module
+│   ├── test_validator.py                # Unit tests for validator module (mocked DB)
+│   ├── test_aggregator.py               # Unit tests for aggregator module
+│   ├── test_runner.py                   # Unit tests for runner connection lifecycle (mocked DB)
+│   └── test_main_connection_lifecycle.py  # Unit tests for benchmark connection lifecycle and reset policy
 ├── plans/               # Actual execution plans as .sqlplan (generated)
 ├── .env.example         # Environment variable template (commit this)
 ├── pytest.ini           # pytest configuration

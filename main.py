@@ -213,6 +213,21 @@ def _print_ranking(results, num_runs=1):
         logger.warning("SpillToTempDb in ranking: %s", spill_str)
 
 
+def _reset_bench_conn(bench_conn, label=""):
+    try:
+        if bench_conn is not None:
+            bench_conn.close()
+    except Exception:
+        pass
+    try:
+        new_conn = get_connection()
+        logger.info("Połączenie benchmarkowe odtworzone po błędzie runu [%s].", label)
+        return new_conn
+    except Exception as exc:
+        logger.error("Nie udało się odtworzyć połączenia benchmarkowego: %s", exc)
+        return None
+
+
 def _compute_base_count(base_query):
     try:
         conn = get_connection()
@@ -282,6 +297,13 @@ def main():
 
     base_count, val_conn = _compute_base_count(base_query)
 
+    bench_conn = None
+    try:
+        bench_conn = get_connection()
+    except Exception as exc:
+        logger.error("Nie udało się otworzyć połączenia benchmarkowego: %s", exc)
+        sys.exit(1)
+
     all_results = []
     json_results = []
 
@@ -296,10 +318,11 @@ def main():
                 continue
 
             if num_runs == 1:
-                result = run_query(query)
+                result = run_query(query, conn=bench_conn)
 
                 if result["error"]:
                     logger.error("Test %d/%d [%s] — Error: %s", i + 1, len(variants), label, result["error"])
+                    bench_conn = _reset_bench_conn(bench_conn, label)
                     continue
 
                 _print_variant_result(result, i + 1, len(variants), label, num_runs=1)
@@ -325,11 +348,12 @@ def main():
             else:
                 run_results = []
                 for run_i in range(num_runs):
-                    result = run_query(query, collect_plan=(run_i == 0))
+                    result = run_query(query, collect_plan=(run_i == 0), conn=bench_conn)
                     if not result["error"]:
                         run_results.append(result)
                     else:
                         logger.warning("[%s] run %d/%d error: %s", label, run_i + 1, num_runs, result["error"])
+                        bench_conn = _reset_bench_conn(bench_conn, label)
 
                 if not run_results:
                     logger.error("Test %d/%d [%s] — All %d runs failed", i + 1, len(variants), label, num_runs)
@@ -365,6 +389,8 @@ def main():
     finally:
         if val_conn is not None:
             val_conn.close()
+        if bench_conn is not None:
+            bench_conn.close()
 
     _print_ranking(all_results, num_runs=num_runs)
     save_results(json_results)
