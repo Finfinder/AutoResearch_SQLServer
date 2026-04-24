@@ -346,3 +346,53 @@ class TestIndexSuggestions:
         result = generate_variants("SELECT 1 AS x")
         labels = [label for label, _ in result]
         assert "Index suggestions" not in labels
+
+
+class TestComposedVariants:
+    def test_composed_variants_generated(self):
+        result = generate_variants(_JOIN_QUERY)
+        composed = [label for label, _ in result if " + " in label]
+        assert len(composed) >= 1
+
+    def test_composed_label_format(self):
+        result = generate_variants(_JOIN_QUERY)
+        composed_labels = [label for label, _ in result if " + " in label]
+        for label in composed_labels:
+            assert label.count(" + ") == 1
+
+    def test_nolock_recompile_pair_exists(self):
+        result = generate_variants(_JOIN_QUERY)
+        labels = [label for label, _ in result]
+        assert "NOLOCK + RECOMPILE" in labels
+
+    def test_join_exists_nolock_pair_exists(self):
+        result = generate_variants(_JOIN_QUERY)
+        labels = [label for label, _ in result]
+        assert "JOIN→EXISTS + NOLOCK" in labels
+
+    def test_or_union_not_in_composed_labels(self):
+        result = generate_variants(_JOIN_QUERY)
+        composed_labels = [label for label, _ in result if " + " in label]
+        assert not any("OR→UNION ALL" in label for label in composed_labels)
+
+    def test_index_suggestions_not_in_composed_labels(self):
+        result = generate_variants(_JOIN_QUERY)
+        composed_labels = [label for label, _ in result if " + " in label]
+        assert not any("Index suggestions" in label for label in composed_labels)
+
+    def test_composed_variants_are_valid_sql(self):
+        result = generate_variants(_JOIN_QUERY)
+        composed = [(label, sql) for label, sql in result if " + " in label]
+        for label, sql in composed:
+            parsed = sqlglot.parse_one(sql, dialect="tsql")
+            assert parsed is not None, f"Composed variant '{label}' is not valid SQL"
+
+    def test_composed_variants_respect_max_variants(self, monkeypatch):
+        monkeypatch.setenv("MAX_VARIANTS", "2")
+        result = generate_variants(_JOIN_QUERY)
+        assert len(result) <= 2
+
+    def test_simple_query_no_composed_pairs(self):
+        result = generate_variants("SELECT 1")
+        composed = [label for label, _ in result if " + " in label]
+        assert len(composed) == 0

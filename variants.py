@@ -387,6 +387,18 @@ _TRANSFORMS = [
     _transform_index_suggestions,
 ]
 
+_COMPOSABLE_TRANSFORMS = [
+    _transform_join_to_exists,
+    _transform_nolock,
+    _transform_recompile,
+    _transform_in_to_exists,
+    _transform_distinct_to_groupby,
+    _transform_subquery_to_cte,
+    _transform_join_reorder,
+    _transform_cross_apply,
+    _transform_join_hints,
+]
+
 
 def _apply_transforms(ast, transform_fns):
     variants = []
@@ -399,6 +411,32 @@ def _apply_transforms(ast, transform_fns):
         except Exception as exc:
             logger.warning("Transform %s skipped: %s", transform_fn.__name__, exc)
     return variants
+
+
+def _apply_composed_transforms(ast):
+    composed = []
+    n = len(_COMPOSABLE_TRANSFORMS)
+    for i in range(n):
+        fn_a = _COMPOSABLE_TRANSFORMS[i]
+        try:
+            results_a = fn_a(ast)
+        except Exception as exc:
+            logger.warning("Compose: transform %s skipped: %s", fn_a.__name__, exc)
+            continue
+        for label_a, ast_a in results_a:
+            for j in range(i + 1, n):
+                fn_b = _COMPOSABLE_TRANSFORMS[j]
+                try:
+                    results_b = fn_b(ast_a)
+                    for label_b, ast_b in results_b:
+                        sql = ast_b if isinstance(ast_b, str) else ast_b.sql(dialect="tsql")
+                        composed.append((f"{label_a} + {label_b}", sql))
+                except Exception as exc:
+                    logger.warning(
+                        "Compose: pair (%s, %s) skipped: %s",
+                        fn_a.__name__, fn_b.__name__, exc,
+                    )
+    return composed
 
 
 def generate_variants(base_query):
@@ -421,9 +459,11 @@ def generate_variants(base_query):
         ) from e
 
     variants = _apply_transforms(ast, _TRANSFORMS)
+    composed = _apply_composed_transforms(ast)
+    all_variants = variants + composed
 
-    if len(variants) > max_variants:
-        logger.warning("%d variants generated, limiting to MAX_VARIANTS=%d.", len(variants), max_variants)
-        variants = variants[:max_variants]
+    if len(all_variants) > max_variants:
+        logger.warning("%d variants generated, limiting to MAX_VARIANTS=%d.", len(all_variants), max_variants)
+        all_variants = all_variants[:max_variants]
 
-    return variants
+    return all_variants
