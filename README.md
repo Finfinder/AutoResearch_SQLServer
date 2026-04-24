@@ -221,7 +221,7 @@ Test 1/7 [JOIN→EXISTS] (3 runs)
    - `HASH/MERGE/LOOP JOIN` — generates three variants with join-method hints
    - `Index suggestions` — prepends `-- Consider index on [schema].[table]([col])` comments based on WHERE/JOIN ON column analysis
 
-   Each variant is labeled with its transformation name (e.g. `JOIN→EXISTS`, `HASH JOIN`). The maximum number of variants is controlled by the `MAX_VARIANTS` environment variable (default: `60`).
+   Each variant is labeled with its transformation name (e.g. `JOIN→EXISTS`, `HASH JOIN`). In addition to single-transformation variants, the tool automatically generates **composed variants** by combining two compatible transformations (e.g. `JOIN→EXISTS + NOLOCK`, `NOLOCK + RECOMPILE`). All unordered pairs from 9 composable transforms are evaluated. Composed variant labels use the `"A + B"` format. The maximum number of variants (single + composed combined) is controlled by the `MAX_VARIANTS` environment variable (default: `60`).
 4. **`guardrails.py`** — static safety checks using `sqlglot` AST analysis. Runs before each variant is benchmarked:
    - **G1** `no_limit_added` — blocks variants that add `TOP N` / `LIMIT` not present in the base query
    - **G2** `no_where_removed` — blocks variants that drop the `WHERE` clause entirely (UNION variants are exempt)

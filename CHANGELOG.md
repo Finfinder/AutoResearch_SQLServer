@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Variant composition — `_COMPOSABLE_TRANSFORMS` list (9 transforms, excluding `OR→UNION ALL` and `Index suggestions`) and `_apply_composed_transforms(ast)` function that generates all unordered pairs of single-transform results (up to 36 pairs for 9 transforms); composed variants appended after single-transform variants; labels use `"A + B"` format; `MAX_VARIANTS` applies to the combined total
+- `tests/test_variants.py` — `TestComposedVariants` class (9 tests): verifies composed variants are generated, label format, specific pairs (`NOLOCK + RECOMPILE`, `JOIN→EXISTS + NOLOCK`), exclusion of non-composable transforms, SQL validity, `MAX_VARIANTS` enforcement, and no composition for trivial queries
 - Connection pooling — benchmark connection opened once per `main.py` run and reused across all variant/run executions; `run_query` accepts optional `conn` parameter (backward-compatible: omitting `conn` preserves original per-call connection lifecycle); on error per run, connection is closed and a new one is opened before continuing with subsequent runs/variants (logged as INFO); `bench_conn` is always closed in the `finally` block regardless of benchmark outcome
 - `tests/test_runner.py` — unit tests for `run_query` connection lifecycle: verifies external connections are never closed by `run_query`, own connections are always closed, and return format is preserved
 - `tests/test_main_connection_lifecycle.py` — unit tests for `_reset_bench_conn` and `main()` connection lifecycle: verifies reset after error, continuation of benchmark, no unclosed connections after completion
