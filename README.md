@@ -2,6 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![SQL Server](https://img.shields.io/badge/SQL%20Server-ODBC%2017-CC2927?logo=microsoftsqlserver&logoColor=white)](https://learn.microsoft.com/en-us/sql/connect/odbc/microsoft-odbc-driver-for-sql-server)
+[![Version](https://img.shields.io/badge/version-0.1.0-green)](version.py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Automated SQL query performance researcher for Microsoft SQL Server. Takes a base SQL query, generates structural variants (JOIN→EXISTS, NOLOCK, RECOMPILE), benchmarks each against a live database, and reports the fastest one. Additionally collects server-side metrics: IO (logical/physical reads), CPU time, memory grants and actual execution plans via SQL Server's built-in diagnostics — enabling multi-criteria ranking beyond wall-clock time alone.
