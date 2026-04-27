@@ -1,0 +1,6 @@
+[
+  {
+    "path": "version.py",
+    "strategy": "python_dunder_version"
+  }
+]
