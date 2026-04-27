@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `.github/workflows/open-next-version-branch.yml`: automated next-version branch creation triggered by successful Release workflow; updates `version.py` and `README.md` with the `next_version` provided before the release
+- `.github/workflows/release.yml`: new Release workflow adapter uploading `next-version-request` artifact for the central automation workflow in `AI_Instruction`
+
 - `version.py`: canonical version source (`__version__ = "0.1.0"`) used by README badge and future version consistency checks
 - Version badge in `README.md` linking to `version.py`
 - Rule in `.github/instructions/autoresearch-sqlserver.instructions.md`: opening a new version branch requires updating `version.py` and `README.md` in the same change

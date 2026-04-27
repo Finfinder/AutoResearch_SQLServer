@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate next version request
+        env:
+          EXPECTED_RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          python3 <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          semver_pattern = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+          manifest_path = Path('.github/release/next-version.json')
+
+          if not manifest_path.exists():
+              raise SystemExit(f'Missing next version request manifest: {manifest_path}')
+
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          release_version = str(manifest.get('release_version', '')).removeprefix('v')
+          next_version = str(manifest.get('next_version', '')).removeprefix('v')
+          expected_version = os.environ['EXPECTED_RELEASE_VERSION'].removeprefix('v')
+
+          if release_version != expected_version:
+              raise SystemExit(f'release_version {release_version!r} does not match tag version {expected_version!r}')
+
+          for label, value in (('release_version', release_version), ('next_version', next_version)):
+              if not semver_pattern.match(value):
+                  raise SystemExit(f'{label} must be a valid semver value. Received: {value!r}')
+
+          if release_version == next_version:
+              raise SystemExit('next_version must differ from release_version')
+
+          artifact_dir = Path(os.environ['RUNNER_TEMP']) / 'next-version-request'
+          artifact_dir.mkdir(parents=True, exist_ok=True)
+          (artifact_dir / 'next-version.json').write_text(
+              json.dumps({'release_version': release_version, 'next_version': next_version}, indent=2) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Upload next version request artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-version-request
+          path: ${{ runner.temp }}/next-version-request/next-version.json
+          if-no-files-found: error

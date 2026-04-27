@@ -1,0 +1,32 @@
+name: Open Next Version Branch
+
+on:
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+
+permissions: {}
+
+jobs:
+  open-next-version-branch:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      actions: read
+      contents: write
+    uses: Finfinder/AI_Instruction/.github/workflows/reusable-open-next-version-branch.yml@main
+    with:
+      workflow-run-id: ${{ github.event.workflow_run.id }}
+      source-repository: ${{ github.repository }}
+      artifact-name: next-version-request
+      base-branch: main
+      version-targets-json: |
+        [
+          {"path":"version.py","strategy":"python_dunder_version"}
+        ]
+      readme-targets-json: |
+        [
+          {"path":"README.md","strategy":"readme_badge"}
+        ]
+    secrets: inherit
