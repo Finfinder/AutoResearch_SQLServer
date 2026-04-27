@@ -1,0 +1,19 @@
+name: Version Consistency
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  version-consistency:
+    permissions:
+      contents: read
+    uses: Finfinder/AI_Instruction/.github/workflows/reusable-version-consistency.yml@main
+    with:
+      source-repository: ${{ github.repository }}
+      repository-ref: ${{ github.sha }}
+    secrets: inherit

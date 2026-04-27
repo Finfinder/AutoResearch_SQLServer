@@ -21,12 +21,4 @@ jobs:
       source-repository: ${{ github.repository }}
       artifact-name: next-version-request
       base-branch: main
-      version-targets-json: |
-        [
-          {"path":"version.py","strategy":"python_dunder_version"}
-        ]
-      readme-targets-json: |
-        [
-          {"path":"README.md","strategy":"readme_badge"}
-        ]
     secrets: inherit

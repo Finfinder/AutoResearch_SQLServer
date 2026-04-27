@@ -8,7 +8,18 @@ on:
 permissions: {}
 
 jobs:
+  version-consistency:
+    permissions:
+      contents: read
+    uses: Finfinder/AI_Instruction/.github/workflows/reusable-version-consistency.yml@main
+    with:
+      source-repository: ${{ github.repository }}
+      repository-ref: ${{ github.ref }}
+      expected-version: ${{ github.ref_name }}
+    secrets: inherit
+
   release:
+    needs: [version-consistency]
     runs-on: ubuntu-latest
     permissions:
       contents: read
