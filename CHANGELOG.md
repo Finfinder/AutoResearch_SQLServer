@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - `main.py` now resolves `query.sql` from bundled resources and writes `.env`-driven runtime outputs (`results.json`, `logs/`, `plans/`) relative to the executable directory in frozen mode
+- `.github/workflows/release.yml`: inline validation of `next_version` manifest replaced by shared reusable workflow `Finfinder/AI_Instruction/.github/workflows/reusable-next-version-request.yml`; added `tests/test_release_artifacts.py` asserting the shared adapter is used and no inline validator remains.
 
 ### Added
 

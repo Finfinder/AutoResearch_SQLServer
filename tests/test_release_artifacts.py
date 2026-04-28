@@ -58,3 +58,17 @@ def test_build_source_bundle_includes_runtime_files_and_excludes_local_env(tmp_p
 
     assert expected_entries.issubset(names)
     assert f"{prefix}.env" not in names
+
+
+def test_release_workflow_uses_shared_next_version_request_adapter():
+    workflow_text = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "reusable-version-consistency.yml@main" in workflow_text
+    assert "reusable-next-version-request.yml@main" in workflow_text
+    assert "source-repository: ${{ github.repository }}" in workflow_text
+    assert "repository-ref: ${{ github.ref }}" in workflow_text
+    assert "needs: [version-consistency, next-version-request]" in workflow_text
+    assert "expected-release-version: ${{ github.ref_name }}" in workflow_text
+    assert "Validate next version request" not in workflow_text
