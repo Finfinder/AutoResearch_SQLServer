@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - v*
 
 permissions: {}
 
@@ -18,7 +18,7 @@ jobs:
       expected-version: ${{ github.ref_name }}
     secrets: inherit
 
-  release:
+  source-bundle:
     needs: [version-consistency]
     runs-on: ubuntu-latest
     permissions:
@@ -27,11 +27,72 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate next version request
+      - name: Prepare release metadata
+        id: prepare
         env:
-          EXPECTED_RELEASE_VERSION: ${{ github.ref_name }}
+          TAG_NAME: ${{ github.ref_name }}
         run: |
           python3 <<'PY'
+          import os
+          from pathlib import Path
+
+          tag_name = os.environ['TAG_NAME']
+          version = tag_name.removeprefix('v')
+          changelog_path = Path('CHANGELOG.md')
+          notes_path = Path(os.environ['RUNNER_TEMP']) / 'release_notes.md'
+
+          lines = changelog_path.read_text(encoding='utf-8').splitlines()
+          start = None
+          end = None
+
+          for index, line in enumerate(lines):
+              if line.startswith('## ['):
+                  if line.startswith(f'## [{version}]'):
+                      start = index + 1
+                  elif start is not None:
+                      end = index
+                      break
+
+          if start is None:
+              notes = f'Release {version}\n\nNo dedicated entry found in CHANGELOG.md for this version.\n'
+          else:
+              selected_lines = lines[start:end]
+              while selected_lines and not selected_lines[0].strip():
+                  selected_lines.pop(0)
+              while selected_lines and not selected_lines[-1].strip():
+                  selected_lines.pop()
+
+              notes = '\n'.join(selected_lines).strip()
+              if not notes:
+                  notes = f'Release {version}\n\nNo detailed notes were recorded in CHANGELOG.md for this version.\n'
+              else:
+                  notes += '\n'
+
+          notes_path.write_text(notes, encoding='utf-8')
+
+          github_output = Path(os.environ['GITHUB_OUTPUT'])
+          with github_output.open('a', encoding='utf-8') as handle:
+              handle.write(f'tag_name={tag_name}\n')
+              handle.write(f'version={version}\n')
+              handle.write(f'release_title=AutoResearch_SQLServer {version}\n')
+              handle.write(f'notes_path={notes_path.as_posix()}\n')
+          PY
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Validate next version request
+        env:
+          EXPECTED_RELEASE_VERSION: ${{ steps.prepare.outputs.version }}
+        run: |
+          python <<'PY'
           import json
           import os
           import re
@@ -72,3 +133,159 @@ jobs:
           name: next-version-request
           path: ${{ runner.temp }}/next-version-request/next-version.json
           if-no-files-found: error
+
+      - name: Run pytest
+        run: pytest
+
+      - name: Build source release bundle
+        env:
+          VERSION: ${{ steps.prepare.outputs.version }}
+        run: python scripts/build_release_artifacts.py --version "$VERSION" --output-dir release
+
+      - name: Upload source release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-release-asset
+          path: release/*.zip
+          if-no-files-found: error
+
+  standalone-bundle:
+    needs: [source-bundle]
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Build standalone bundle
+        shell: pwsh
+        run: pyinstaller --clean AutoResearch_SQLServer.spec
+
+      - name: Archive standalone bundle
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          $version = $env:TAG_NAME.TrimStart('v')
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          Compress-Archive -Path dist/AutoResearch_SQLServer/* -DestinationPath "release/AutoResearch_SQLServer-$version-win-x64.zip"
+
+      - name: Upload standalone release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-release-asset
+          path: release/*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [source-bundle, standalone-bundle]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ github.ref_name }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare release metadata
+        id: prepare
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+
+          tag_name = os.environ['TAG_NAME']
+          version = tag_name.removeprefix('v')
+          changelog_path = Path('CHANGELOG.md')
+          notes_path = Path(os.environ['RUNNER_TEMP']) / 'release_notes.md'
+
+          lines = changelog_path.read_text(encoding='utf-8').splitlines()
+          start = None
+          end = None
+
+          for index, line in enumerate(lines):
+              if line.startswith('## ['):
+                  if line.startswith(f'## [{version}]'):
+                      start = index + 1
+                  elif start is not None:
+                      end = index
+                      break
+
+          if start is None:
+              notes = f'Release {version}\n\nNo dedicated entry found in CHANGELOG.md for this version.\n'
+          else:
+              selected_lines = lines[start:end]
+              while selected_lines and not selected_lines[0].strip():
+                  selected_lines.pop(0)
+              while selected_lines and not selected_lines[-1].strip():
+                  selected_lines.pop()
+
+              notes = '\n'.join(selected_lines).strip()
+              if not notes:
+                  notes = f'Release {version}\n\nNo detailed notes were recorded in CHANGELOG.md for this version.\n'
+              else:
+                  notes += '\n'
+
+          notes_path.write_text(notes, encoding='utf-8')
+
+          github_output = Path(os.environ['GITHUB_OUTPUT'])
+          with github_output.open('a', encoding='utf-8') as handle:
+              handle.write(f'tag_name={tag_name}\n')
+              handle.write(f'version={version}\n')
+              handle.write(f'release_title=AutoResearch_SQLServer {version}\n')
+              handle.write(f'notes_path={notes_path.as_posix()}\n')
+          PY
+
+      - name: Download source release asset
+        uses: actions/download-artifact@v4
+        with:
+          name: source-release-asset
+          path: release
+
+      - name: Download standalone release asset
+        uses: actions/download-artifact@v4
+        with:
+          name: standalone-release-asset
+          path: release
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.prepare.outputs.tag_name }}
+          RELEASE_TITLE: ${{ steps.prepare.outputs.release_title }}
+          NOTES_PATH: ${{ steps.prepare.outputs.notes_path }}
+        run: |
+          set -euo pipefail
+
+          release_view_stderr="${{ runner.temp }}/release_view.stderr"
+
+          if gh release view "$TAG_NAME" >/dev/null 2>"$release_view_stderr"; then
+            gh release edit "$TAG_NAME" --title "$RELEASE_TITLE" --notes-file "$NOTES_PATH"
+          else
+            view_status=$?
+
+            if grep -qi "release not found" "$release_view_stderr"; then
+              gh release create "$TAG_NAME" --verify-tag --title "$RELEASE_TITLE" --notes-file "$NOTES_PATH"
+            else
+              cat "$release_view_stderr" >&2
+              exit "$view_status"
+            fi
+          fi
+
+          gh release upload "$TAG_NAME" release/*.zip --clobber
