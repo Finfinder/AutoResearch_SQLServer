@@ -10,10 +10,30 @@ permissions: {}
 
 jobs:
   version-consistency:
+    runs-on: ubuntu-latest
     permissions:
       contents: read
-    uses: Finfinder/AI_Instruction/.github/workflows/reusable-version-consistency.yml@main
-    with:
-      source-repository: ${{ github.repository }}
-      repository-ref: ${{ github.sha }}
-    secrets: inherit
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          path: repository
+
+      - name: Checkout automation repository
+        uses: actions/checkout@v4
+        with:
+          repository: Finfinder/AI_Instruction
+          ref: main
+          token: ${{ secrets.AI_INSTRUCTION_WORKFLOW_TOKEN }}
+          fetch-depth: 1
+          path: ai_instruction
+
+      - name: Validate version consistency
+        shell: pwsh
+        run: |
+          & "${{ github.workspace }}/ai_instruction/scripts/validate-version-consistency.ps1" `
+            -RepositoryRoot "${{ github.workspace }}/repository" `
+            -VersionTargetsPath "${{ github.workspace }}/repository/.github/versioning/version-targets.json" `
+            -ReadmeTargetsPath "${{ github.workspace }}/repository/.github/versioning/readme-targets.json"
