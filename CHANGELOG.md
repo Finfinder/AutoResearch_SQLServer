@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Full release publishing for tagged versions: GitHub Release notes from `CHANGELOG.md`, a source ZIP for Python-based usage, and a standalone `win-x64` ZIP built with PyInstaller
+- `scripts/build_release_artifacts.py` for assembling the source release bundle and `AutoResearch_SQLServer.spec` for the standalone one-folder build
+
+### Changed
+
+- `main.py` now resolves `query.sql` from bundled resources and writes `.env`-driven runtime outputs (`results.json`, `logs/`, `plans/`) relative to the executable directory in frozen mode
+
+### Added
+
 - `.github/workflows/open-next-version-branch.yml`: automated next-version branch creation triggered by successful Release workflow; updates `version.py` and `README.md` with the `next_version` provided before the release
 - `.github/workflows/release.yml`: new Release workflow adapter uploading `next-version-request` artifact for the central automation workflow in `AI_Instruction`
 

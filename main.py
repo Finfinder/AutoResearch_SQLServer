@@ -5,9 +5,9 @@ import logging
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import colorlog
-from pathlib import Path
 from dotenv import load_dotenv
 from aggregator import aggregate_runs
 from db import get_connection
@@ -20,9 +20,21 @@ logger = logging.getLogger(__name__)
 result_logger = logging.getLogger("benchmark")
 
 
+def get_resource_path(relative_path):
+    resource_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return resource_root / Path(relative_path)
+
+
+def get_runtime_output_path(relative_path):
+    if getattr(sys, "frozen", False):
+        runtime_root = Path(sys.executable).resolve().parent
+    else:
+        runtime_root = Path(__file__).resolve().parent
+    return runtime_root / Path(relative_path)
+
+
 def load_query():
-    with open("query.sql", "r") as f:
-        return f.read()
+    return get_resource_path("query.sql").read_text(encoding="utf-8")
 
 
 def parse_args():
@@ -40,7 +52,11 @@ def parse_args():
 
 
 def setup_logging():
-    load_dotenv(override=False)
+    env_path = get_runtime_output_path(".env")
+    if env_path.exists():
+        load_dotenv(env_path, override=False)
+    else:
+        load_dotenv(override=False)
     log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
     numeric_level = getattr(logging, log_level, None)
     if not isinstance(numeric_level, int):
@@ -66,7 +82,7 @@ def setup_logging():
     else:
         stderr_handler.setFormatter(fmt)
     root.addHandler(stderr_handler)
-    logs_dir = Path("logs")
+    logs_dir = get_runtime_output_path("logs")
     logs_dir.mkdir(exist_ok=True)
     log_filename = logs_dir / f"autoresearch_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
     file_handler = logging.FileHandler(log_filename, encoding="utf-8")
@@ -80,12 +96,12 @@ def setup_logging():
 
 
 def save_results(results):
-    with open("results.json", "w") as f:
+    with get_runtime_output_path("results.json").open("w", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
 
 def _save_plan(plan_xml, variant_index):
-    plans_dir = Path("plans")
+    plans_dir = get_runtime_output_path("plans")
     plans_dir.mkdir(exist_ok=True)
     plan_path = plans_dir / f"plan_variant_{variant_index}.sqlplan"
     plan_path.write_text(plan_xml, encoding="utf-8")

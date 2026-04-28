@@ -54,6 +54,19 @@ pip install -r requirements.txt
 
 ---
 
+## Release Artifacts
+
+Tagged releases publish two ZIP artifacts on GitHub Releases:
+
+- `AutoResearch_SQLServer-<version>-source.zip` — source bundle with the runtime Python files, `query.sql`, `.env.example`, and documentation needed to run the tool with a local Python environment
+- `AutoResearch_SQLServer-<version>-win-x64.zip` — standalone Windows bundle built with PyInstaller in one-folder mode for end users who do not want to install Python separately
+
+Both artifacts still require access to Microsoft SQL Server and an installed [ODBC Driver 17 for SQL Server](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server). The standalone bundle removes the Python prerequisite only; it does not bundle the SQL Server engine or the ODBC driver.
+
+For the standalone bundle, place your `.env` file next to the executable directory if you want the tool to load connection settings automatically at startup.
+
+---
+
 ## Configuration
 
 Credentials are read from environment variables, never hardcoded. For local development, copy `.env.example` to `.env` and fill in your values:
