@@ -94,3 +94,37 @@ def test_open_next_version_workflow_uses_local_adapter():
     assert "artifact-name: next-version-request" in workflow_text
     assert "base-branch: main" in workflow_text
     assert "Finfinder/AI_Instruction/.github/workflows/reusable-open-next-version-branch.yml@main" not in workflow_text
+
+
+def test_reusable_workflows_pass_untrusted_inputs_via_environment_variables():
+    workflows_root = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+    version_consistency = (workflows_root / "reusable-version-consistency.yml").read_text(encoding="utf-8")
+    assert "EXPECTED_VERSION: ${{ inputs.expected-version }}" in version_consistency
+    assert "$expectedVersion = $env:EXPECTED_VERSION" in version_consistency
+    assert '$expectedVersion = "${{ inputs.expected-version }}"' not in version_consistency
+    assert 'VersionTargetsPath = "${{ github.workspace }}/repository/$env:VERSION_TARGETS_PATH"' in version_consistency
+    assert 'ReadmeTargetsPath = "${{ github.workspace }}/repository/$env:README_TARGETS_PATH"' in version_consistency
+
+    next_version_request = (workflows_root / "reusable-next-version-request.yml").read_text(encoding="utf-8")
+    assert "EXPECTED_RELEASE_VERSION: ${{ inputs.expected-release-version }}" in next_version_request
+    assert "-ExpectedReleaseVersion $env:EXPECTED_RELEASE_VERSION" in next_version_request
+    assert '-ExpectedReleaseVersion "${{ inputs.expected-release-version }}"' not in next_version_request
+    assert '-ManifestPath "${{ github.workspace }}/repository/$env:MANIFEST_PATH"' in next_version_request
+
+    open_next_version = (workflows_root / "reusable-open-next-version-branch.yml").read_text(encoding="utf-8")
+    assert "BASE_BRANCH: ${{ inputs.base-branch }}" in open_next_version
+    assert "-BaseBranch $env:BASE_BRANCH" in open_next_version
+    assert '-BaseBranch "${{ inputs.base-branch }}"' not in open_next_version
+    assert '-VersionTargetsPath "${{ github.workspace }}/repository/$env:VERSION_TARGETS_PATH"' in open_next_version
+    assert '-ReadmeTargetsPath "${{ github.workspace }}/repository/$env:README_TARGETS_PATH"' in open_next_version
+
+
+def test_open_next_version_script_writes_utf8_without_bom():
+    script_text = (
+        Path(__file__).resolve().parents[1] / "scripts" / "open-next-version-branch.ps1"
+    ).read_text(encoding="utf-8")
+
+    assert "$utf8NoBom = [System.Text.UTF8Encoding]::new($false)" in script_text
+    assert "[System.IO.File]::WriteAllText($targetPath, $updateResult.Content, $utf8NoBom)" in script_text
+    assert "Set-Content -LiteralPath $targetPath -Value $updateResult.Content -Encoding UTF8" not in script_text

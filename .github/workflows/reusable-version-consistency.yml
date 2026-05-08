@@ -47,14 +47,20 @@ jobs:
       - name: Validate version consistency
         id: validate
         shell: pwsh
+        env:
+          VERSION_TARGETS_PATH: ${{ inputs.version-targets-path }}
+          README_TARGETS_PATH: ${{ inputs.readme-targets-path }}
+          EXPECTED_VERSION: ${{ inputs.expected-version }}
+          SOURCE_REPOSITORY: ${{ inputs.source-repository }}
+          REPOSITORY_REF: ${{ inputs.repository-ref }}
         run: |
           $arguments = @{
             RepositoryRoot = "${{ github.workspace }}/repository"
-            VersionTargetsPath = "${{ github.workspace }}/repository/${{ inputs.version-targets-path }}"
-            ReadmeTargetsPath = "${{ github.workspace }}/repository/${{ inputs.readme-targets-path }}"
+            VersionTargetsPath = "${{ github.workspace }}/repository/$env:VERSION_TARGETS_PATH"
+            ReadmeTargetsPath = "${{ github.workspace }}/repository/$env:README_TARGETS_PATH"
           }
 
-          $expectedVersion = "${{ inputs.expected-version }}"
+          $expectedVersion = $env:EXPECTED_VERSION
           if (-not [string]::IsNullOrWhiteSpace($expectedVersion)) {
             $arguments.ExpectedVersion = $expectedVersion
           }
@@ -65,16 +71,16 @@ jobs:
 
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Version Consistency'
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
-            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: ${{ inputs.source-repository }}"
-            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Ref: ${{ inputs.repository-ref }}"
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: $env:SOURCE_REPOSITORY"
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Ref: $env:REPOSITORY_REF"
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Version: $($result.Version)"
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Validated targets: $($result.ValidatedTargetCount)"
           }
           catch {
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Version Consistency'
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
-            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: ${{ inputs.source-repository }}"
-            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Ref: ${{ inputs.repository-ref }}"
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: $env:SOURCE_REPOSITORY"
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Ref: $env:REPOSITORY_REF"
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '- Status: failed'
             $errorMessage = $_.Exception.Message
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Error: $errorMessage"

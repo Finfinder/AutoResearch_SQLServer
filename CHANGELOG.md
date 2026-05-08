@@ -1,11 +1,23 @@
 # Changelog
 
+<!-- markdownlint-disable MD024 -->
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+### Security
+
+- `.github/workflows/reusable-version-consistency.yml`, `reusable-next-version-request.yml`, `reusable-open-next-version-branch.yml` — untrusted `${{ inputs.* }}` expressions moved from PowerShell `run:` blocks to `env:` variables and read via `$env:` to prevent expression injection attacks (GitHub Actions security best practice for `workflow_call` inputs)
+- `tests/test_release_artifacts.py` — new contract test `test_reusable_workflows_pass_untrusted_inputs_via_environment_variables` verifies the `env:` + `$env:` pattern is enforced in all three reusable workflows
+
+### Fixed
+
+- `scripts/open-next-version-branch.ps1` — replaced `Set-Content -Encoding UTF8` with `[System.IO.File]::WriteAllText` using `UTF8Encoding($false)` to prevent UTF-8 BOM from being written to `version.py` and `README.md` under PowerShell 5.1
+- `tests/test_release_artifacts.py` — new contract test `test_open_next_version_script_writes_utf8_without_bom` verifies absence of `Set-Content -Encoding UTF8` and presence of `WriteAllText` with no-BOM encoding
 
 ### Added
 
@@ -16,8 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - `main.py` now resolves `query.sql` from bundled resources and writes `.env`-driven runtime outputs (`results.json`, `logs/`, `plans/`) relative to the executable directory in frozen mode
 - `.github/workflows/release.yml`, `.github/workflows/version-consistency.yml`, and `.github/workflows/open-next-version-branch.yml` now call repository-local reusable workflows plus bundled PowerShell helpers, removing the hard dependency on reusable workflows hosted in the private `Finfinder/AI_Instruction` repository for this public repo.
-
-### Added
 
 - `.github/workflows/open-next-version-branch.yml`: automated next-version branch creation triggered by successful Release workflow; updates `version.py` and `README.md` with the `next_version` provided before the release
 - `.github/workflows/release.yml`: new Release workflow adapter uploading `next-version-request` artifact for the downstream next-version branch automation
@@ -38,7 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `runner.py` — `run_query` signature extended with `conn=None`; connection is closed in `finally` only when created locally (`own_conn=True`)
 - `main.py` — benchmark connection opened once before variant loop; all `run_query` calls pass `conn=bench_conn`; added `_reset_bench_conn` helper for connection reset after run errors; `bench_conn` closed in `finally` alongside existing `val_conn`
 
-
 - `logging` module integration — stdlib `logging` replaces `print()` for all diagnostic output; two handlers: `StreamHandler(stderr)` at level controlled by `LOG_LEVEL` env var (default `INFO`) and `FileHandler` in `logs/` directory at `DEBUG` level; benchmark results (variant times, IO, CPU, ranking) additionally logged to file via dedicated `benchmark` logger (`propagate=False`)
 - `LOG_LEVEL` environment variable — controls stderr verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`; invalid values fall back to `INFO`); readable from `.env` via `python-dotenv`
 - `logs/autoresearch_YYYYMMDD_HHMMSS.log` — timestamped log file per run capturing full history (diagnostics + benchmark results); each run creates a new file in the `logs/` directory; covered by `*.log` in `.gitignore`
@@ -51,8 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `variants.py` — 3 `print(file=sys.stderr)` calls migrated to `logger.warning()`; `import sys` removed
 - `db.py` — `logger.debug()` added before `pyodbc.connect()` to log connection target (server/database/uid — password never logged)
 - `.env.example` — `LOG_LEVEL=INFO` entry added with supported values documented
-
- — runs each variant N times (default: 1, clamped to [1, 100]); cold cache (`DBCC DROPCLEANBUFFERS` / `DBCC FREEPROCCACHE`) is cleared before each individual run; execution plan and Query Store are collected from the first run only
+- `main.py` — runs each variant N times (default: 1, clamped to [1, 100]); cold cache (`DBCC DROPCLEANBUFFERS` / `DBCC FREEPROCCACHE`) is cleared before each individual run; execution plan and Query Store are collected from the first run only
 - `aggregator.py` — pure aggregation module with `compute_stats(values)` (mean / median / stdev / min / max via `statistics` stdlib) and `aggregate_runs(run_results)` (aggregates `time` and `server_metrics`, preserves execution plan / Query Store from first run, skips error runs)
 - `tests/test_aggregator.py` — 11 unit tests covering `compute_stats` (multi-value, single-value stdev=0, empty→None) and `aggregate_runs` (time/IO aggregation, first-run plan preservation, error run skipping, empty server_metrics, plan-loss edge case)
 
@@ -61,7 +69,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `runner.py` — `run_query(query)` gains optional `collect_plan=True` parameter; when `False`, `SET STATISTICS XML ON`, `_collect_execution_plan()`, and `_fetch_query_store()` are all skipped (returns `plan_xml=None, execution_plan={}, query_store=None`), reducing per-run overhead for multi-run benchmarks
 - `main.py` — integrates `parse_args()` with argparse, `--runs N` loop over variants, and conditional JSON format: N=1 preserves flat backward-compatible format; N>1 adds `"runs"`, aggregated `"time"` / `"server_metrics"` dicts (mean/median/stdev/min/max), and `"raw_runs"` array; ranking uses median for N>1
 - Console output for N>1: variant header shows `(N runs)`, time printed as `mean ± stdev (median)`, IO and CPU printed as medians
-
 
 - `validator.py` — runtime row count validator: compares `SELECT COUNT(*) FROM (<base>) AS _v` against each variant before benchmarking; mismatches block the variant with graceful degradation on failure
 - `GUARDRAILS.md` — human-readable reference for guardrail rules, rationale, and guidance for adding new transforms
@@ -107,7 +114,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `variants.py` — full rewrite: replaced 4 hardcoded `str.replace()` transformations with a dynamic AST-based generator using `sqlglot`. Generator parses any T-SQL query, detects structural patterns, and applies transformations automatically. Interface changed from `list[str]` to `list[tuple[str, str]]` (label, SQL).
 - `main.py` — updated to handle the new `list[tuple[str, str]]` interface: iterates as `(label, query)`, displays transformation labels in test headers and ranking, adds `"label"` to `results.json`, catches `VariantGenerationError` with `sys.exit(1)`, handles empty variant list gracefully
 - `tests/test_variants.py` — full rewrite: 48 unit tests covering all 12 transforms (pattern detected / pattern absent), `VariantGenerationError` fields, `MAX_VARIANTS` limit, interface contract, and SQL validity via `sqlglot.parse_one()` round-trip
-
 
 - `pytest.ini` — formal pytest configuration with `pythonpath = .` (eliminates `sys.path` hacks), `testpaths = tests`, and test discovery patterns consistent with existing test conventions
 - `tests/test_variants.py` — 6 unit tests for `generate_variants()` covering all 4 structural transformations (JOIN→EXISTS, TOP, NOLOCK, RECOMPILE) and the no-match edge case; no mocks required (pure function)
