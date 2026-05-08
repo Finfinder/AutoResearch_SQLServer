@@ -46,15 +46,42 @@ These violations are recorded in `results.json` under `guardrail_warnings` and p
 
 Beyond static guardrails (AST checks), the tool performs a **runtime validation** before each variant is benchmarked:
 
-### Row count validation
+### Hybrid runtime validation
 
-The tool runs `SELECT COUNT(*) FROM (<variant_query>) AS _v` and compares it against the base query row count. If the counts differ, the variant is blocked.
+The tool uses a hybrid runtime validator:
 
-This catches semantic changes that are invisible at the AST level, such as:
+- **Default path** — runs `SELECT COUNT(*) FROM (<variant_query>) AS _v` and compares it against the base query row count.
+- **Strict path** — hashes the complete result set for the base query and each variant.
+
+Strict validation is enabled when:
+
+- the user passes `--strict-validation`, or
+- the base query returns fewer than 200 rows.
+
+This stricter mode catches semantic changes that are invisible even when row counts match, such as:
+
 - `OR→UNION ALL` producing duplicate rows for overlapping OR conditions
 - JOIN rewrites that accidentally multiply rows (Cartesian product artefacts)
+- rewrites that keep the same row count but alter one or more values
 
-**Graceful degradation**: If the `COUNT(*)` query fails (timeout, permission error, network issue), the variant is **not blocked** — a warning is printed and the benchmark continues.
+### Ordering semantics
+
+Row order matters **only** when the base query has an explicit `ORDER BY`.
+
+- With explicit `ORDER BY`, the validator compares the result as a sequence.
+- Without `ORDER BY`, the validator compares the result as a multiset: duplicate rows still matter, but incidental order does not.
+
+### Graceful degradation
+
+If strict validation cannot be performed safely, the tool falls back to row count validation and records the reason in logs and `results.json`.
+
+Fallback happens for example when:
+
+- the query exposes unsupported legacy SQL Server types such as `text`, `ntext`, or `image`
+- a text/binary LOB value exceeds the strict validation size threshold
+- `ORDER BY` analysis or strict serialization fails
+
+If the fallback `COUNT(*)` query also fails (timeout, permission error, network issue), the variant is **not blocked** — a warning is printed and the benchmark continues.
 
 ---
 
@@ -65,6 +92,6 @@ When writing a new transform in `variants.py`, ask:
 1. **Does it preserve the full result set?** If not — either fix the transform or do not add it.
 2. **Does it add TOP/LIMIT?** → G1 will block it automatically.
 3. **Does it remove the WHERE clause?** → G2 will block it automatically (unless it is a UNION variant).
-4. **Can it produce duplicate rows?** → Runtime row count validation will catch it.
+4. **Can it produce duplicate rows or alter values while preserving row count?** → Runtime validation will catch it through row count or strict hashing, depending on the active mode.
 
 If a new transform intentionally changes semantics (e.g. sampling), it must not be added to `_TRANSFORMS` — it belongs in a separate, clearly named tool.

@@ -29,7 +29,7 @@ Automated SQL query performance researcher for Microsoft SQL Server. Takes a bas
 > All diagnostic features use **graceful degradation** — if a permission is missing, a warning is printed and the benchmark continues with reduced metrics:
 >
 > | Feature | Required permission | Degradation behaviour |
-> |---|---|---|
+> | --- | --- | --- |
 > | Cache clearing | `ALTER SERVER STATE` | Skipped — benchmark runs on warm cache |
 > | Execution plan (`.sqlplan`) | `SHOWPLAN` | Plan not captured — IO/CPU still collected |
 > | Query Store metrics | `VIEW DATABASE STATE` + Query Store enabled | Skipped — `query_store: null` in results |
@@ -94,7 +94,7 @@ DB_PWD=your_password
 ```
 
 | Variable | Required | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `DB_SERVER` | ✅ | — | Hostname or IP of the SQL Server instance |
 | `DB_DATABASE` | ✅ | — | Name of the target database |
 | `DB_UID` | ✅ | — | SQL Server login (SQL Authentication) |
@@ -104,7 +104,6 @@ DB_PWD=your_password
 | `NO_COLOR` | ❌ | _(unset)_ | Set to any value to disable ANSI color codes on stderr (e.g. `NO_COLOR=1`). Follows the [no-color.org](https://no-color.org/) standard. Colors are also disabled automatically when stderr is not a terminal (e.g. piped output). |
 
 > **Production / Docker**: set the variables directly in the environment (container runtime, secrets manager, CI/CD). Values from the environment always take priority over `.env`.
-
 > **Security**: `.env` is listed in `.gitignore` and must never be committed to the repository.
 
 ---
@@ -114,7 +113,7 @@ DB_PWD=your_password
 The tool uses Python's stdlib `logging` module with two output channels:
 
 | Channel | Content | Format |
-|---|---|---|
+| --- | --- | --- |
 | **stdout** | Benchmark results (times, IO, CPU, memory grant, ranking) | Human-readable with emoji |
 | **stderr** | Diagnostic messages (warnings, errors, info) | Colored by log level (white=DEBUG, green=INFO, yellow=WARNING, red=ERROR, bold_red=CRITICAL) when terminal is detected |
 | **`logs/autoresearch_YYYYMMDD_HHMMSS.log`** | Full history — diagnostics AND benchmark results | `TIMESTAMP LEVEL logger: message` (plain text, no color codes) |
@@ -155,12 +154,16 @@ python main.py
 
 # Multiple runs per variant — aggregates mean ± stdev / median
 python main.py --runs 5
+
+# Force strict validation even for large result sets
+python main.py --strict-validation
 ```
 
 The tool will:
+
 1. Load the base query from `query.sql`
 2. Generate structural variants via `variants.py`
-3. Validate each variant: static guardrails (AST) then runtime row count check — blocked variants are skipped
+3. Validate each variant: static guardrails (AST) then hybrid runtime validation (`COUNT(*)` by default, strict full-result hash for `--strict-validation` or automatically below 200 base rows) — blocked variants are skipped
 4. Execute each valid variant with `SET STATISTICS IO ON`, `SET STATISTICS TIME ON`, and `SET STATISTICS XML ON`
 5. Display per-variant server-side metrics (IO, CPU, memory grant)
 6. Save all results (including validation info) to `results.json`
@@ -170,13 +173,13 @@ The tool will:
 ### CLI Arguments
 
 | Argument | Default | Description |
-|---|---|---|
+| --- | --- | --- |
 | `--runs N` | `1` | Number of benchmark runs per variant. Clamped to [1, 100]. Cold cache cleared before each run. |
-
+| `--strict-validation` | `false` | Force strict runtime validation based on hashing the complete result set. Without this flag, strict validation is enabled automatically only when the base query returns fewer than 200 rows. |
 
 Example output:
 
-```
+```text
 Test 1/7 [JOIN→EXISTS]
 ⏱️  Time: 0.0187s (server: 10ms CPU / 18ms elapsed)
 📊 IO: 45 logical reads, 0 physical reads
@@ -198,7 +201,7 @@ Test 2/7 [NOLOCK]
 
 Example output with `--runs 3`:
 
-```
+```text
 Test 1/7 [JOIN→EXISTS] (3 runs)
 ⏱️  Time: 0.0191s mean ± 0.0012s (median: 0.0188s)
 ⚡ CPU: 10ms mean ± 1ms (median: 10ms)
@@ -217,59 +220,96 @@ Test 1/7 [JOIN→EXISTS] (3 runs)
 
 ## How It Works
 
-1. **`main.py`** — orchestrator: loads the query, generates variants, runs benchmarks, displays per-variant metrics, saves results to `results.json`, saves execution plans to `plans/`, and prints the multi-criteria ranking.
-   - Opens a single benchmark ODBC connection before the variant loop and reuses it for all `run_query` calls; this eliminates per-call connect/disconnect overhead and reduces measurement variance.
-   - After a run error, the benchmark connection is closed and a new one is opened before continuing with the next run or variant (logged at INFO). If reconnection fails, `run_query` falls back to its own per-call connection (graceful degradation).
-   - The benchmark connection is always closed in the `finally` block regardless of outcome.
-2. **`query.sql`** — base SQL query to optimize.
-3. **`variants.py`** — dynamically generates structural variants of the base query using `sqlglot` AST parsing. Parses any T-SQL query, detects structural patterns, and applies transformations:
-   - `JOIN→EXISTS` — replaces INNER JOINs with correlated `WHERE EXISTS` subqueries
-   - `NOLOCK` — adds `WITH (NOLOCK)` hint to all tables
-   - `RECOMPILE` — appends `OPTION (RECOMPILE)` to force fresh execution plan
-   - `IN→EXISTS` — replaces `IN (subquery)` with `EXISTS`
-   - `OR→UNION ALL` — splits OR conditions into separate queries with `UNION ALL`
-   - `DISTINCT→GROUP BY` — replaces `SELECT DISTINCT` with `GROUP BY`
-   - `Subquery→CTE` — extracts subqueries from FROM clause into `WITH` CTEs
-   - `JOIN reorder` — swaps the order of first and last INNER JOIN (when ≥2 JOINs)
-   - `CROSS APPLY` — converts JOIN with subquery to `CROSS APPLY`
-   - `HASH/MERGE/LOOP JOIN` — generates three variants with join-method hints
-   - `Index suggestions` — prepends `-- Consider index on [schema].[table]([col])` comments based on WHERE/JOIN ON column analysis
+### `main.py`
 
-   Each variant is labeled with its transformation name (e.g. `JOIN→EXISTS`, `HASH JOIN`). In addition to single-transformation variants, the tool automatically generates **composed variants** by combining two compatible transformations (e.g. `JOIN→EXISTS + NOLOCK`, `NOLOCK + RECOMPILE`). All unordered pairs from 9 composable transforms are evaluated. Composed variant labels use the `"A + B"` format. The maximum number of variants (single + composed combined) is controlled by the `MAX_VARIANTS` environment variable (default: `60`).
-4. **`guardrails.py`** — static safety checks using `sqlglot` AST analysis. Runs before each variant is benchmarked:
-   - **G1** `no_limit_added` — blocks variants that add `TOP N` / `LIMIT` not present in the base query
-   - **G2** `no_where_removed` — blocks variants that drop the `WHERE` clause entirely (UNION variants are exempt)
-   - **G4** `nolock_warning` — warns (does not block) variants using `WITH (NOLOCK)`
+The orchestrator loads the base query, generates variants, runs benchmarks, displays per-variant metrics, saves results to `results.json`, saves execution plans to `plans/`, and prints the multi-criteria ranking.
 
-   See [GUARDRAILS.md](GUARDRAILS.md) for the full rule reference.
-5. **`validator.py`** — runtime semantic validation. Before benchmarking, computes `SELECT COUNT(*) FROM (<variant>) AS _v` and compares it against the base query row count. Mismatches block the variant. Failures degrade gracefully (warning printed, variant not blocked).
-6. **`runner.py`** — per-variant execution flow:
-   - Clears buffer pool and plan cache (`DBCC DROPCLEANBUFFERS` / `DBCC FREEPROCCACHE`) — graceful degradation if permission missing
-   - Enables `SET STATISTICS IO ON` and `SET STATISTICS TIME ON` to collect logical/physical reads and CPU/elapsed time from `cursor.messages`; if the ODBC driver does not populate messages (e.g. ODBC Driver 18), falls back to runtime stats extracted from the XML execution plan
-   - With `collect_plan=True` (default): enables `SET STATISTICS XML ON` to capture the actual execution plan — graceful degradation if `SHOWPLAN` permission missing; also queries `sys.query_store_runtime_stats`; for multi-run benchmarks, subsequent runs use `collect_plan=False` to reduce overhead
-   - Executes the query, measures wall-clock time
-   - Accepts an optional `conn` parameter; when a connection is provided externally it is **not** closed by `run_query` — connection lifecycle belongs to the caller; when `conn` is omitted, `run_query` creates and closes its own connection (backward-compatible default)
-   - Returns a dict with all collected metrics
-7. **`aggregator.py`** — pure aggregation for multi-run benchmarks:
-   - `compute_stats(values)` — computes mean / median / stdev / min / max using `statistics` stdlib; returns `None` for empty input, `stdev=0.0` for single value
-   - `aggregate_runs(run_results)` — aggregates `time` and `server_metrics` across N runs, preserves execution plan / Query Store from the first run, skips error runs
-8. **`stats_parser.py`** — pure functions for parsing SQL Server diagnostic output:
-   - `parse_io_stats(messages)` — regex parser for `SET STATISTICS IO` output; sums metrics across all tables (handles JOIN scenarios)
-   - `parse_time_stats(messages)` — regex parser for `SET STATISTICS TIME` execution times (excludes parse/compile phase)
-   - `parse_execution_plan(xml_string)` — XML parser for actual execution plan; extracts `MemoryGrant`, `SpillToTempDb` warnings, physical operator list, and runtime stats (`QueryTimeStats`, `RunTimeCountersPerThread`)
-8. **`db.py`** — connection factory using ODBC Driver 17.
+- Opens a single benchmark ODBC connection before the variant loop and reuses it for all `run_query` calls; this eliminates per-call connect/disconnect overhead and reduces measurement variance.
+- After a run error, the benchmark connection is closed and a new one is opened before continuing with the next run or variant (logged at INFO). If reconnection fails, `run_query` falls back to its own per-call connection (graceful degradation).
+- The benchmark connection is always closed in the `finally` block regardless of outcome.
+
+### `query.sql`
+
+Holds the base SQL query to optimize.
+
+### `variants.py`
+
+Generates structural variants of the base query using `sqlglot` AST parsing. Supported transforms include:
+
+- `JOIN→EXISTS`
+- `NOLOCK`
+- `RECOMPILE`
+- `IN→EXISTS`
+- `OR→UNION ALL`
+- `DISTINCT→GROUP BY`
+- `Subquery→CTE`
+- `JOIN reorder`
+- `CROSS APPLY`
+- `HASH/MERGE/LOOP JOIN`
+- `Index suggestions`
+
+Each variant is labeled with its transformation name (e.g. `JOIN→EXISTS`, `HASH JOIN`). In addition to single-transformation variants, the tool automatically generates **composed variants** by combining two compatible transformations (e.g. `JOIN→EXISTS + NOLOCK`, `NOLOCK + RECOMPILE`). All unordered pairs from 9 composable transforms are evaluated. Composed variant labels use the `"A + B"` format. The maximum number of variants (single + composed combined) is controlled by the `MAX_VARIANTS` environment variable (default: `60`).
+
+### `guardrails.py`
+
+Runs static safety checks using `sqlglot` AST analysis before each variant is benchmarked.
+
+- **G1** `no_limit_added` — blocks variants that add `TOP N` / `LIMIT` not present in the base query
+- **G2** `no_where_removed` — blocks variants that drop the `WHERE` clause entirely (UNION variants are exempt)
+- **G4** `nolock_warning` — warns (does not block) variants using `WITH (NOLOCK)`
+
+See [GUARDRAILS.md](GUARDRAILS.md) for the full rule reference.
+
+### `validator.py`
+
+Provides hybrid runtime semantic validation.
+
+- Default path: computes `SELECT COUNT(*) FROM (<variant>) AS _v` and compares it against the base query row count.
+- Strict path: hashes the complete result set for the base query and each variant, preserving row order only when the base query has an explicit `ORDER BY`.
+- Activation policy: strict validation is forced by `--strict-validation`, or enabled automatically when the base query returns fewer than 200 rows.
+- Fallback policy: unsupported legacy SQL types (`text`, `ntext`, `image`), oversized LOB values, or strict serialization failures fall back to row count validation with explicit warnings in `results.json` and logs.
+
+### `runner.py`
+
+Executes each variant and collects runtime diagnostics.
+
+- Clears buffer pool and plan cache (`DBCC DROPCLEANBUFFERS` / `DBCC FREEPROCCACHE`) — graceful degradation if permission missing
+- Enables `SET STATISTICS IO ON` and `SET STATISTICS TIME ON` to collect logical/physical reads and CPU/elapsed time from `cursor.messages`; if the ODBC driver does not populate messages (e.g. ODBC Driver 18), falls back to runtime stats extracted from the XML execution plan
+- With `collect_plan=True` (default): enables `SET STATISTICS XML ON` to capture the actual execution plan — graceful degradation if `SHOWPLAN` permission missing; also queries `sys.query_store_runtime_stats`; for multi-run benchmarks, subsequent runs use `collect_plan=False` to reduce overhead
+- Executes the query and measures wall-clock time
+- Accepts an optional `conn` parameter; when a connection is provided externally it is **not** closed by `run_query` — connection lifecycle belongs to the caller; when `conn` is omitted, `run_query` creates and closes its own connection (backward-compatible default)
+- Returns a dict with all collected metrics
+
+### `aggregator.py`
+
+Provides pure aggregation for multi-run benchmarks.
+
+- `compute_stats(values)` — computes mean / median / stdev / min / max using `statistics` stdlib; returns `None` for empty input, `stdev=0.0` for single value
+- `aggregate_runs(run_results)` — aggregates `time` and `server_metrics` across N runs, preserves execution plan / Query Store from the first run, skips error runs
+
+### `stats_parser.py`
+
+Contains pure functions for parsing SQL Server diagnostic output.
+
+- `parse_io_stats(messages)` — regex parser for `SET STATISTICS IO` output; sums metrics across all tables (handles JOIN scenarios)
+- `parse_time_stats(messages)` — regex parser for `SET STATISTICS TIME` execution times (excludes parse/compile phase)
+- `parse_execution_plan(xml_string)` — XML parser for actual execution plan; extracts `MemoryGrant`, `SpillToTempDb` warnings, physical operator list, and runtime stats (`QueryTimeStats`, `RunTimeCountersPerThread`)
+
+### `db.py`
+
+Provides the SQL Server connection factory using ODBC Driver 17.
 
 ---
 
 ## Project Structure
 
-```
+```text
 AutoResearch_SQLServer/
 ├── main.py              # Entry point — orchestrator
 ├── query.sql            # Base SQL query to optimize
 ├── variants.py          # Query variant generator
 ├── guardrails.py        # Static AST safety checks (G1, G2, G4)
-├── validator.py         # Runtime row count validation
+├── validator.py         # Hybrid runtime validation: row count + strict result hashing
 ├── runner.py            # Query executor: SET STATISTICS, metrics, Query Store
 ├── aggregator.py        # Pure aggregation: compute_stats(), aggregate_runs()
 ├── stats_parser.py      # Pure parsers: IO/TIME regex, XML plan
@@ -324,7 +364,14 @@ AutoResearch_SQLServer/
     "is_valid": true,
     "base_count": 1234,
     "variant_count": 1234,
-    "message": "OK"
+    "message": "OK",
+    "mode": "strict_hash",
+    "ordered": false,
+    "strict_requested": true,
+    "strict_applied": true,
+    "strict_source": "auto",
+    "fallback_reason": null,
+    "warnings": []
   },
   "guardrail_warnings": []
 }
@@ -360,6 +407,8 @@ AutoResearch_SQLServer/
   ]
 }
 ```
+
+`validation.mode` is `row_count` for the lightweight path and `strict_hash` when the complete result set was hashed successfully. If strict validation was requested but had to degrade, `mode` remains `row_count`, `strict_requested` stays `true`, `strict_applied` becomes `false`, and `fallback_reason` explains why the tool returned to the lightweight validator.
 
 > The `.sqlplan` files in `plans/` can be opened in **SQL Server Management Studio (SSMS)** for a visual execution plan view.
 

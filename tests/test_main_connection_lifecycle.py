@@ -3,12 +3,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from main import _reset_bench_conn
+from main import _build_base_strict_context, _reset_bench_conn, _resolve_strict_validation_source
+from validator import ValidationResult
 
 
-def _make_args(runs=1):
+def _make_args(runs=1, strict_validation=False):
     args = MagicMock()
     args.runs = runs
+    args.strict_validation = strict_validation
     return args
 
 
@@ -64,6 +66,73 @@ class TestResetBenchConn:
         with patch("main.get_connection", return_value=new_conn):
             result = _reset_bench_conn(None)
         assert result is new_conn
+
+
+class TestStrictValidationPolicy:
+    def test_cli_flag_has_priority_over_row_threshold(self):
+        assert _resolve_strict_validation_source(10_000, True) == "cli"
+
+    def test_auto_strict_is_enabled_below_threshold(self):
+        assert _resolve_strict_validation_source(199, False) == "auto"
+
+    def test_auto_strict_is_disabled_at_threshold_and_above(self):
+        assert _resolve_strict_validation_source(200, False) is None
+        assert _resolve_strict_validation_source(500, False) is None
+
+
+class TestBuildBaseStrictContext:
+    def test_enables_auto_strict_for_small_results(self):
+        val_conn = MagicMock()
+        strict_context = {
+            "ordered": True,
+            "base_signature": "sig",
+            "base_row_count": 10,
+            "fallback_reason": None,
+            "warnings": [],
+        }
+
+        with patch("main.build_strict_validation_context", return_value=strict_context):
+            base_count, context, source = _build_base_strict_context("SELECT 1 ORDER BY 1", 10, val_conn, False)
+
+        assert base_count == 10
+        assert context == strict_context
+        assert source == "auto"
+
+    def test_skips_auto_strict_at_threshold_or_above(self):
+        val_conn = MagicMock()
+
+        with patch("main.build_strict_validation_context") as build_context:
+            base_count, context, source = _build_base_strict_context("SELECT 1", 200, val_conn, False)
+
+        assert base_count == 200
+        assert context is None
+        assert source is None
+        build_context.assert_not_called()
+
+    def test_recovers_base_count_for_cli_strict_when_count_is_unavailable(self):
+        val_conn = MagicMock()
+        strict_context = {
+            "ordered": True,
+            "base_signature": "sig",
+            "base_row_count": 12,
+            "fallback_reason": None,
+            "warnings": [],
+        }
+
+        with patch("main.build_strict_validation_context", return_value=strict_context):
+            base_count, context, source = _build_base_strict_context("SELECT 1 ORDER BY 1", None, val_conn, True)
+
+        assert base_count == 12
+        assert context == strict_context
+        assert source == "cli"
+
+    def test_preserves_strict_source_when_validation_connection_is_unavailable(self):
+        base_count, context, source = _build_base_strict_context("SELECT 1", None, None, True)
+
+        assert base_count is None
+        assert source == "cli"
+        assert context["base_signature"] is None
+        assert context["fallback_reason"] == "Validation connection unavailable"
 
 
 class TestBenchConnLifecycleInMain:
@@ -276,6 +345,251 @@ class TestBenchConnLifecycleInMain:
         )
 
         assert collected_results[0]["warnings"] == ["aggregate warning", "guardrail warning"]
+
+    def test_single_run_preserves_strict_fallback_metadata_in_json_result(self):
+        validation_info = {
+            "is_valid": True,
+            "base_count": 10,
+            "variant_count": 10,
+            "message": "Strict validation skipped — unsupported SQL type; row count OK",
+            "mode": "row_count",
+            "ordered": False,
+            "strict_requested": True,
+            "strict_applied": False,
+            "strict_source": "auto",
+            "fallback_reason": "unsupported SQL type",
+            "warnings": ["Unsupported SQL type for strict validation: text"],
+        }
+
+        _, collected_results = self._run_main(
+            variants=[("base", "SELECT 1")],
+            run_query_side_effect=[_success_result()],
+            runs=1,
+            row_count_result=(validation_info, False),
+        )
+
+        assert collected_results[0]["validation"]["mode"] == "row_count"
+        assert collected_results[0]["validation"]["strict_requested"] is True
+        assert collected_results[0]["validation"]["strict_applied"] is False
+        assert collected_results[0]["validation"]["strict_source"] == "auto"
+        assert collected_results[0]["validation"]["fallback_reason"] == "unsupported SQL type"
+
+    def test_multi_run_preserves_strict_fallback_metadata_in_json_result(self):
+        validation_info = {
+            "is_valid": True,
+            "base_count": 10,
+            "variant_count": 10,
+            "message": "Strict validation skipped — unsupported SQL type; row count OK",
+            "mode": "row_count",
+            "ordered": False,
+            "strict_requested": True,
+            "strict_applied": False,
+            "strict_source": "cli",
+            "fallback_reason": "unsupported SQL type",
+            "warnings": ["Unsupported SQL type for strict validation: text"],
+        }
+
+        _, collected_results = self._run_main(
+            variants=[("v1", "SELECT 1")],
+            run_query_side_effect=[_success_result(), _success_result()],
+            runs=2,
+            row_count_result=(validation_info, False),
+        )
+
+        assert collected_results[0]["validation"]["mode"] == "row_count"
+        assert collected_results[0]["validation"]["strict_requested"] is True
+        assert collected_results[0]["validation"]["strict_applied"] is False
+        assert collected_results[0]["validation"]["strict_source"] == "cli"
+        assert collected_results[0]["validation"]["fallback_reason"] == "unsupported SQL type"
+
+    def test_main_passes_cli_strict_context_to_validation(self):
+        bench_conn = MagicMock()
+        val_conn = MagicMock()
+        strict_context = {
+            "ordered": False,
+            "base_signature": "abc",
+            "base_row_count": 12,
+            "fallback_reason": None,
+            "warnings": [],
+        }
+        collected_results = []
+        check_row_count = MagicMock(
+            return_value=(
+                {
+                    "is_valid": True,
+                    "base_count": 12,
+                    "variant_count": 12,
+                    "message": "OK",
+                    "mode": "strict_hash",
+                    "ordered": False,
+                    "strict_requested": True,
+                    "strict_applied": True,
+                    "strict_source": "cli",
+                    "fallback_reason": None,
+                    "warnings": [],
+                },
+                False,
+            )
+        )
+
+        with patch("main.setup_logging"), \
+             patch("main.parse_args", return_value=_make_args(runs=1, strict_validation=True)), \
+             patch("main.load_query", return_value="SELECT 1"), \
+             patch("main.generate_variants", return_value=[("v1", "SELECT 1")]), \
+             patch("main._compute_base_count", return_value=(None, val_conn)), \
+             patch("main._build_base_strict_context", return_value=(12, strict_context, "cli")), \
+             patch("main.get_connection", return_value=bench_conn), \
+             patch("main.run_query", return_value=_success_result()), \
+             patch("main._check_guardrails", return_value=([], False)), \
+             patch("main._check_row_count", check_row_count), \
+             patch("main.save_results", side_effect=lambda r: collected_results.extend(r)), \
+             patch("main._print_ranking"), \
+             patch("main._print_variant_result"):
+            from main import main
+            main()
+
+        check_row_count.assert_called_once_with(12, "SELECT 1", "v1", val_conn, strict_context, "cli")
+        assert collected_results[0]["validation"]["mode"] == "strict_hash"
+        assert collected_results[0]["validation"]["strict_source"] == "cli"
+
+    def test_main_passes_auto_strict_context_to_validation(self):
+        bench_conn = MagicMock()
+        val_conn = MagicMock()
+        strict_context = {
+            "ordered": False,
+            "base_signature": "abc",
+            "base_row_count": 42,
+            "fallback_reason": None,
+            "warnings": [],
+        }
+        check_row_count = MagicMock(return_value=(None, False))
+
+        with patch("main.setup_logging"), \
+             patch("main.parse_args", return_value=_make_args(runs=1, strict_validation=False)), \
+             patch("main.load_query", return_value="SELECT 1"), \
+             patch("main.generate_variants", return_value=[("v1", "SELECT 1")]), \
+             patch("main._compute_base_count", return_value=(42, val_conn)), \
+             patch("main._build_base_strict_context", return_value=(42, strict_context, "auto")), \
+             patch("main.get_connection", return_value=bench_conn), \
+             patch("main.run_query", return_value=_success_result()), \
+             patch("main._check_guardrails", return_value=([], False)), \
+             patch("main._check_row_count", check_row_count), \
+             patch("main.save_results"), \
+             patch("main._print_ranking"), \
+             patch("main._print_variant_result"):
+            from main import main
+            main()
+
+        check_row_count.assert_called_once_with(42, "SELECT 1", "v1", val_conn, strict_context, "auto")
+
+    def test_main_uses_row_count_path_for_large_results_without_cli(self):
+        bench_conn = MagicMock()
+        val_conn = MagicMock()
+        check_row_count = MagicMock(return_value=(None, False))
+
+        with patch("main.setup_logging"), \
+             patch("main.parse_args", return_value=_make_args(runs=1, strict_validation=False)), \
+             patch("main.load_query", return_value="SELECT 1"), \
+             patch("main.generate_variants", return_value=[("v1", "SELECT 1")]), \
+             patch("main._compute_base_count", return_value=(250, val_conn)), \
+             patch("main._build_base_strict_context", return_value=(250, None, None)), \
+             patch("main.get_connection", return_value=bench_conn), \
+             patch("main.run_query", return_value=_success_result()), \
+             patch("main._check_guardrails", return_value=([], False)), \
+             patch("main._check_row_count", check_row_count), \
+             patch("main.save_results"), \
+             patch("main._print_ranking"), \
+             patch("main._print_variant_result"):
+            from main import main
+            main()
+
+        check_row_count.assert_called_once_with(250, "SELECT 1", "v1", val_conn, None, None)
+
+    def test_main_preserves_validation_metadata_when_cli_strict_has_no_base_count(self):
+        bench_conn = MagicMock()
+        val_conn = MagicMock()
+        strict_context = {
+            "ordered": False,
+            "base_signature": None,
+            "base_row_count": None,
+            "fallback_reason": "Strict validation context is unavailable",
+            "warnings": ["Strict validation setup failed"],
+        }
+        collected_results = []
+        validation_result = ValidationResult(
+            is_valid=True,
+            base_count=None,
+            variant_count=-1,
+            message=(
+                "Strict validation skipped — Strict validation context is unavailable; "
+                "base row count unavailable"
+            ),
+            mode="row_count",
+            ordered=False,
+            strict_requested=True,
+            strict_applied=False,
+            strict_source="cli",
+            fallback_reason="Strict validation context is unavailable",
+            warnings=["Strict validation setup failed"],
+        )
+
+        with patch("main.setup_logging"), \
+             patch("main.parse_args", return_value=_make_args(runs=1, strict_validation=True)), \
+             patch("main.load_query", return_value="SELECT 1"), \
+             patch("main.generate_variants", return_value=[("v1", "SELECT 1")]), \
+             patch("main._compute_base_count", return_value=(None, val_conn)), \
+             patch("main._build_base_strict_context", return_value=(None, strict_context, "cli")), \
+             patch("main.get_connection", return_value=bench_conn), \
+             patch("main.run_query", return_value=_success_result()), \
+             patch("main._check_guardrails", return_value=([], False)), \
+             patch("main.validate_query_results", return_value=validation_result), \
+             patch("main.save_results", side_effect=lambda r: collected_results.extend(r)), \
+             patch("main._print_ranking"), \
+             patch("main._print_variant_result"):
+            from main import main
+            main()
+
+        assert collected_results[0]["validation"]["strict_requested"] is True
+        assert collected_results[0]["validation"]["strict_applied"] is False
+        assert collected_results[0]["validation"]["strict_source"] == "cli"
+        assert collected_results[0]["validation"]["fallback_reason"] == "Strict validation context is unavailable"
+
+    def test_main_preserves_validation_metadata_when_validation_connection_is_unavailable(self):
+        bench_conn = MagicMock()
+        collected_results = []
+
+        with patch("main.setup_logging"), \
+             patch("main.parse_args", return_value=_make_args(runs=1, strict_validation=True)), \
+             patch("main.load_query", return_value="SELECT 1"), \
+             patch("main.generate_variants", return_value=[("v1", "SELECT 1")]), \
+             patch("main._compute_base_count", return_value=(None, None)), \
+             patch(
+                 "main._build_base_strict_context",
+                 return_value=(
+                     None,
+                     {
+                         "ordered": False,
+                         "base_signature": None,
+                         "base_row_count": None,
+                         "fallback_reason": "Validation connection unavailable",
+                         "warnings": ["Validation connection unavailable"],
+                     },
+                     "cli",
+                 ),
+             ), \
+             patch("main.get_connection", return_value=bench_conn), \
+             patch("main.run_query", return_value=_success_result()), \
+             patch("main._check_guardrails", return_value=([], False)), \
+             patch("main.save_results", side_effect=lambda r: collected_results.extend(r)), \
+             patch("main._print_ranking"), \
+             patch("main._print_variant_result"):
+            from main import main
+            main()
+
+        assert collected_results[0]["validation"]["strict_requested"] is True
+        assert collected_results[0]["validation"]["strict_applied"] is False
+        assert collected_results[0]["validation"]["strict_source"] == "cli"
+        assert collected_results[0]["validation"]["fallback_reason"] == "Validation connection unavailable"
 
     def test_benchmark_continues_when_reconnect_fails(self):
         bench_conn = MagicMock()

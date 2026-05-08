@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Hybrid runtime validation for query variants: `main.py` now supports `--strict-validation`, `validator.py` can hash complete result sets, strict mode is also enabled automatically below 200 base rows, and unsupported legacy SQL types or oversized LOB values degrade explicitly back to row count validation
+- `tests/test_validator.py` — strict validation coverage for full-result hashing, `ORDER BY` semantics, same-count semantic mismatches, fallback for legacy types / large LOBs, and canonicalization of datetime / float / XML values
+- `tests/test_main_connection_lifecycle.py` — coverage for strict validation activation sources (`cli` / `auto`) and persistence of fallback metadata in `results.json`
+
+### Changed
+
+- `README.md` and `GUARDRAILS.md` — documentation updated to describe the hybrid validator, `--strict-validation`, automatic strict mode below 200 rows, ordering semantics, fallback rules, and the expanded `validation` contract in `results.json`
+
 ### Security
 
 - `.github/workflows/reusable-version-consistency.yml`, `reusable-next-version-request.yml`, `reusable-open-next-version-branch.yml` — untrusted `${{ inputs.* }}` expressions moved from PowerShell `run:` blocks to `env:` variables and read via `$env:` to prevent expression injection attacks (GitHub Actions security best practice for `workflow_call` inputs)
