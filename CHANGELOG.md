@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `main.py` — refactored `_print_variant_result`, `_print_ranking`, and `main()` to reduce cognitive complexity: extracted private helpers for metric reporting (`_print_variant_header`, `_print_spill_warning`, `_print_variant_warnings`, `_print_aggregated_variant_metrics`, `_print_single_run_variant_metrics`, `_print_memory_grant`), ranking (`_get_ranking_value`, `_get_best_ranked_result`, `_print_best_rank_entry`, `_print_primary_ranking`), and benchmark orchestration (`_prepare_variant_execution`, `_run_single_variant`, `_run_multi_variant`, `_build_single_json_result`, `_build_multi_json_result`, `_build_raw_runs`, `_save_plan_if_present`); introduced `_VARIANT_WARNING_FORMAT` module-level constant to eliminate duplicated `"[%s]: %s"` logging literal; no change to CLI behavior or `results.json` format
+- `tests/test_main_reporting.py` — new unit tests for `_print_variant_result` and `_print_ranking` (single-run and aggregated paths, spill summary, warning emission)
+- `tests/test_main_connection_lifecycle.py` — extended with JSON result shape assertions (`test_single_run_collects_expected_json_result`, `test_multi_run_collects_expected_json_result`) and `warnings + guardrail_warnings` merge-order tests (`test_single_run_preserves_warning_merge_order`, `test_multi_run_preserves_warning_merge_order`)
+
 - `main.py` now resolves `query.sql` from bundled resources and writes `.env`-driven runtime outputs (`results.json`, `logs/`, `plans/`) relative to the executable directory in frozen mode
 - `.github/workflows/release.yml`, `.github/workflows/version-consistency.yml`, and `.github/workflows/open-next-version-branch.yml` now call repository-local reusable workflows plus bundled PowerShell helpers, removing the hard dependency on reusable workflows hosted in the private `Finfinder/AI_Instruction` repository for this public repo.
 

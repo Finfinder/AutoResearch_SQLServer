@@ -19,6 +19,8 @@ from variants import generate_variants, VariantGenerationError
 logger = logging.getLogger(__name__)
 result_logger = logging.getLogger("benchmark")
 
+_VARIANT_WARNING_FORMAT = "[%s]: %s"
+
 
 def get_resource_path(relative_path):
     resource_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -108,123 +110,199 @@ def _save_plan(plan_xml, variant_index):
     return str(plan_path)
 
 
-def _print_variant_result(result, index, total, label, num_runs=1):
+def _print_variant_header(index, total, label, num_runs):
     if num_runs > 1:
         print(f"Test {index}/{total} [{label}] ({num_runs} runs)")
         result_logger.info("Test %d/%d [%s] (%d runs)", index, total, label, num_runs)
-        time_stats = result.get("time", {})
-        if time_stats:
-            print(f"⏱️  Time: {time_stats['mean']:.4f}s mean ± {time_stats['stdev']:.4f}s (median: {time_stats['median']:.4f}s)")
-            result_logger.info("Time: %.4fs mean +/- %.4fs (median: %.4fs)", time_stats["mean"], time_stats["stdev"], time_stats["median"])
-        sm = result.get("server_metrics", {})
-        ep = result.get("execution_plan", {})
-        cpu = sm.get("cpu_time_ms", {})
-        if cpu:
-            print(f"⚡ CPU: {cpu['mean']:.0f}ms mean ± {cpu['stdev']:.0f}ms (median: {cpu['median']:.0f}ms)")
-            result_logger.info("CPU: %.0fms mean +/- %.0fms (median: %.0fms)", cpu["mean"], cpu["stdev"], cpu["median"])
-        logical = sm.get("logical_reads", {})
-        physical = sm.get("physical_reads", {})
-        if logical:
-            phys_str = f", {physical['median']:.0f} physical reads (median)" if physical else ""
-            print(f"📊 IO: {logical['median']:.0f} logical reads (median){phys_str}")
-            result_logger.info("IO: %.0f logical reads (median)%s", logical["median"], phys_str)
-        memory_grant = ep.get("memory_grant_kb")
-        if memory_grant is not None:
-            print(f"💾 Memory grant: {memory_grant} KB")
-            result_logger.info("Memory grant: %s KB", memory_grant)
-        if ep.get("spill_warnings"):
-            print("⚠️  SpillToTempDb detected!")
-            logger.warning("SpillToTempDb detected in [%s]", label)
-        for warning in result.get("warnings", []):
-            print(f"⚠️  {warning}")
-            logger.warning("[%s]: %s", label, warning)
+        return
+
+    print(f"Test {index}/{total} [{label}]")
+    result_logger.info("Test %d/%d [%s]", index, total, label)
+
+
+def _print_spill_warning(label, execution_plan):
+    if not execution_plan.get("spill_warnings"):
+        return
+
+    print("⚠️  SpillToTempDb detected!")
+    logger.warning("SpillToTempDb detected in [%s]", label)
+
+
+def _print_variant_warnings(label, warnings):
+    for warning in warnings:
+        print(f"⚠️  {warning}")
+        logger.warning(_VARIANT_WARNING_FORMAT, label, warning)
+
+
+def _print_aggregated_variant_metrics(result):
+    time_stats = result.get("time", {})
+    if time_stats:
+        print(
+            f"⏱️  Time: {time_stats['mean']:.4f}s mean ± {time_stats['stdev']:.4f}s "
+            f"(median: {time_stats['median']:.4f}s)"
+        )
+        result_logger.info(
+            "Time: %.4fs mean +/- %.4fs (median: %.4fs)",
+            time_stats["mean"],
+            time_stats["stdev"],
+            time_stats["median"],
+        )
+
+    server_metrics = result.get("server_metrics", {})
+    cpu_stats = server_metrics.get("cpu_time_ms", {})
+    if cpu_stats:
+        print(
+            f"⚡ CPU: {cpu_stats['mean']:.0f}ms mean ± {cpu_stats['stdev']:.0f}ms "
+            f"(median: {cpu_stats['median']:.0f}ms)"
+        )
+        result_logger.info(
+            "CPU: %.0fms mean +/- %.0fms (median: %.0fms)",
+            cpu_stats["mean"],
+            cpu_stats["stdev"],
+            cpu_stats["median"],
+        )
+
+    logical_reads = server_metrics.get("logical_reads", {})
+    physical_reads = server_metrics.get("physical_reads", {})
+    if logical_reads:
+        phys_str = f", {physical_reads['median']:.0f} physical reads (median)" if physical_reads else ""
+        print(f"📊 IO: {logical_reads['median']:.0f} logical reads (median){phys_str}")
+        result_logger.info("IO: %.0f logical reads (median)%s", logical_reads["median"], phys_str)
+
+
+def _print_single_run_variant_metrics(result):
+    server_metrics = result.get("server_metrics", {})
+    cpu = server_metrics.get("cpu_time_ms")
+    elapsed = server_metrics.get("elapsed_time_ms")
+    if cpu is not None and elapsed is not None:
+        print(f"⏱️  Time: {result['time']:.4f}s (server: {cpu}ms CPU / {elapsed}ms elapsed)")
+        result_logger.info("Time: %.4fs (server: %sms CPU / %sms elapsed)", result["time"], cpu, elapsed)
     else:
-        print(f"Test {index}/{total} [{label}]")
-        result_logger.info("Test %d/%d [%s]", index, total, label)
-        sm = result.get("server_metrics", {})
-        ep = result.get("execution_plan", {})
-        cpu = sm.get("cpu_time_ms")
-        elapsed = sm.get("elapsed_time_ms")
-        if cpu is not None and elapsed is not None:
-            print(f"⏱️  Time: {result['time']:.4f}s (server: {cpu}ms CPU / {elapsed}ms elapsed)")
-            result_logger.info("Time: %.4fs (server: %sms CPU / %sms elapsed)", result["time"], cpu, elapsed)
-        else:
-            print(f"⏱️  Time: {result['time']:.4f}s")
-            result_logger.info("Time: %.4fs", result["time"])
-        logical = sm.get("logical_reads")
-        physical = sm.get("physical_reads")
-        if logical is not None:
-            print(f"📊 IO: {logical} logical reads, {physical} physical reads")
-            result_logger.info("IO: %s logical reads, %s physical reads", logical, physical)
-        memory_grant = ep.get("memory_grant_kb")
-        if memory_grant is not None:
-            print(f"💾 Memory grant: {memory_grant} KB")
-            result_logger.info("Memory grant: %s KB", memory_grant)
-        if ep.get("spill_warnings"):
-            print("⚠️  SpillToTempDb detected!")
-            logger.warning("SpillToTempDb detected in [%s]", label)
-        for warning in result.get("warnings", []):
-            print(f"⚠️  {warning}")
-            logger.warning("[%s]: %s", label, warning)
+        print(f"⏱️  Time: {result['time']:.4f}s")
+        result_logger.info("Time: %.4fs", result["time"])
+
+    logical_reads = server_metrics.get("logical_reads")
+    physical_reads = server_metrics.get("physical_reads")
+    if logical_reads is not None:
+        print(f"📊 IO: {logical_reads} logical reads, {physical_reads} physical reads")
+        result_logger.info("IO: %s logical reads, %s physical reads", logical_reads, physical_reads)
+
+
+def _print_memory_grant(result):
+    memory_grant = result.get("execution_plan", {}).get("memory_grant_kb")
+    if memory_grant is None:
+        return
+
+    print(f"💾 Memory grant: {memory_grant} KB")
+    result_logger.info("Memory grant: %s KB", memory_grant)
+
+
+def _print_variant_result(result, index, total, label, num_runs=1):
+    _print_variant_header(index, total, label, num_runs)
+    if num_runs > 1:
+        _print_aggregated_variant_metrics(result)
+    else:
+        _print_single_run_variant_metrics(result)
+
+    _print_memory_grant(result)
+    _print_spill_warning(label, result.get("execution_plan", {}))
+    _print_variant_warnings(label, result.get("warnings", []))
+
+
+def _get_ranking_value(result, metric_path, aggregate=False):
+    value = result
+    for key in metric_path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+
+    if aggregate:
+        if isinstance(value, dict):
+            return value.get("median")
+        return None
+
+    if isinstance(value, dict):
+        return None
+    return value
+
+
+def _get_best_ranked_result(results, metric_path, aggregate=False):
+    ranked = []
+    for result in results:
+        value = _get_ranking_value(result, metric_path, aggregate=aggregate)
+        if value is not None:
+            ranked.append((result, value))
+
+    if not ranked:
+        return None, None
+
+    return min(ranked, key=lambda item: item[1])
+
+
+def _print_best_rank_entry(print_prefix, log_template, best_result, value, value_format):
+    print(f"  {print_prefix}[{best_result['label']}] — {value_format.format(value)}")
+    result_logger.info(log_template, best_result["label"], value)
+
+
+def _print_primary_ranking(results, aggregate=False):
+    ranking_specs = [
+        {
+            "path": ("time",),
+            "print_prefix": "⏱️  Best by time (median):  " if aggregate else "⏱️  Best by time:         ",
+            "log_template": "  Best by time (median): [%s] — %.4fs" if aggregate else "  Best by time: [%s] — %.4fs",
+            "value_format": "{:.4f}s",
+        },
+        {
+            "path": ("server_metrics", "logical_reads"),
+            "print_prefix": "📊 Best by IO (median):     " if aggregate else "📊 Best by IO:            ",
+            "log_template": "  Best by IO (median): [%s] — %.0f logical reads" if aggregate else "  Best by IO: [%s] — %s logical reads",
+            "value_format": "{:.0f} logical reads" if aggregate else "{} logical reads",
+        },
+        {
+            "path": ("server_metrics", "cpu_time_ms"),
+            "print_prefix": "⚡ Best by CPU (median):    " if aggregate else "⚡ Best by CPU:            ",
+            "log_template": "  Best by CPU (median): [%s] — %.0fms" if aggregate else "  Best by CPU: [%s] — %sms",
+            "value_format": "{:.0f}ms" if aggregate else "{}ms",
+        },
+    ]
+
+    for spec in ranking_specs:
+        best_result, value = _get_best_ranked_result(results, spec["path"], aggregate=aggregate)
+        if best_result is None:
+            continue
+        _print_best_rank_entry(
+            spec["print_prefix"],
+            spec["log_template"],
+            best_result,
+            value,
+            spec["value_format"],
+        )
 
 
 def _print_ranking(results, num_runs=1):
     if not results:
         return
+
     print("\n🏆 RANKING:")
     result_logger.info("RANKING:")
     if num_runs > 1:
-        valid = [r for r in results if isinstance(r.get("time"), dict) and r["time"].get("median") is not None]
-        if valid:
-            best_time = min(valid, key=lambda r: r["time"]["median"])
-            print(f"  ⏱️  Best by time (median):  [{best_time['label']}] — {best_time['time']['median']:.4f}s")
-            result_logger.info("  Best by time (median): [%s] — %.4fs", best_time["label"], best_time["time"]["median"])
-        logical_results = [
-            r for r in results if isinstance(r.get("server_metrics", {}).get("logical_reads"), dict)
-        ]
-        if logical_results:
-            best_io = min(logical_results, key=lambda r: r["server_metrics"]["logical_reads"]["median"])
-            print(f"  📊 Best by IO (median):     [{best_io['label']}] — {best_io['server_metrics']['logical_reads']['median']:.0f} logical reads")
-            result_logger.info("  Best by IO (median): [%s] — %.0f logical reads", best_io["label"], best_io["server_metrics"]["logical_reads"]["median"])
-        cpu_results = [
-            r for r in results if isinstance(r.get("server_metrics", {}).get("cpu_time_ms"), dict)
-        ]
-        if cpu_results:
-            best_cpu = min(cpu_results, key=lambda r: r["server_metrics"]["cpu_time_ms"]["median"])
-            print(f"  ⚡ Best by CPU (median):    [{best_cpu['label']}] — {best_cpu['server_metrics']['cpu_time_ms']['median']:.0f}ms")
-            result_logger.info("  Best by CPU (median): [%s] — %.0fms", best_cpu["label"], best_cpu["server_metrics"]["cpu_time_ms"]["median"])
+        _print_primary_ranking(results, aggregate=True)
     else:
-        valid = [r for r in results if r.get("time") is not None]
-        if valid:
-            best_time = min(valid, key=lambda r: r["time"])
-            print(f"  ⏱️  Best by time:         [{best_time['label']}] — {best_time['time']:.4f}s")
-            result_logger.info("  Best by time: [%s] — %.4fs", best_time["label"], best_time["time"])
-        logical_results = [
-            r for r in results if r.get("server_metrics", {}).get("logical_reads") is not None
-        ]
-        if logical_results:
-            best_io = min(logical_results, key=lambda r: r["server_metrics"]["logical_reads"])
-            print(f"  📊 Best by IO:            [{best_io['label']}] — {best_io['server_metrics']['logical_reads']} logical reads")
-            result_logger.info("  Best by IO: [%s] — %s logical reads", best_io["label"], best_io["server_metrics"]["logical_reads"])
-        cpu_results = [
-            r for r in results if r.get("server_metrics", {}).get("cpu_time_ms") is not None
-        ]
-        if cpu_results:
-            best_cpu = min(cpu_results, key=lambda r: r["server_metrics"]["cpu_time_ms"])
-            print(f"  ⚡ Best by CPU:            [{best_cpu['label']}] — {best_cpu['server_metrics']['cpu_time_ms']}ms")
-            result_logger.info("  Best by CPU: [%s] — %sms", best_cpu["label"], best_cpu["server_metrics"]["cpu_time_ms"])
-    mem_results = [
-        r for r in results if r.get("execution_plan", {}).get("memory_grant_kb") is not None
-    ]
-    if mem_results:
-        best_mem = min(mem_results, key=lambda r: r["execution_plan"]["memory_grant_kb"])
-        print(f"  💾 Best by memory grant:  [{best_mem['label']}] — {best_mem['execution_plan']['memory_grant_kb']} KB")
-        result_logger.info("  Best by memory grant: [%s] — %s KB", best_mem["label"], best_mem["execution_plan"]["memory_grant_kb"])
+        _print_primary_ranking(results)
+
+    best_mem, memory_grant = _get_best_ranked_result(
+        results,
+        ("execution_plan", "memory_grant_kb"),
+    )
+    if best_mem is not None:
+        print(f"  💾 Best by memory grant:  [{best_mem['label']}] — {memory_grant} KB")
+        result_logger.info("  Best by memory grant: [%s] — %s KB", best_mem["label"], memory_grant)
+
     spill_variants = [
-        r["label"] for r in results if r.get("execution_plan", {}).get("spill_warnings")
+        result["label"] for result in results if result.get("execution_plan", {}).get("spill_warnings")
     ]
     if spill_variants:
-        spill_str = ", ".join(f"[{v}]" for v in spill_variants)
+        spill_str = ", ".join(f"[{variant}]" for variant in spill_variants)
         print(f"  ⚠️  SpillToTempDb:         {spill_str}")
         logger.warning("SpillToTempDb in ranking: %s", spill_str)
 
@@ -291,8 +369,147 @@ def _check_row_count(base_count, query, label, val_conn):
         logger.warning("Row count mismatch blocked [%s]: %s", label, val_result.message)
         return validation_info, True
     if val_result.variant_count == -1:
-        logger.warning("[%s]: %s", label, val_result.message)
+        logger.warning(_VARIANT_WARNING_FORMAT, label, val_result.message)
     return validation_info, False
+
+
+def _prepare_variant_execution(base_query, query, label, base_count, val_conn):
+    guardrail_warnings, blocked = _check_guardrails(base_query, query, label)
+    if blocked:
+        return guardrail_warnings, None, True
+
+    validation_info, blocked = _check_row_count(base_count, query, label, val_conn)
+    return guardrail_warnings, validation_info, blocked
+
+
+def _save_plan_if_present(result, variant_index):
+    if not result.get("plan_xml"):
+        return None
+
+    return _save_plan(result["plan_xml"], variant_index)
+
+
+def _build_single_json_result(label, query, result, plan_file, validation_info, guardrail_warnings):
+    combined_warnings = result.get("warnings", []) + guardrail_warnings
+    return {
+        "label": label,
+        "query": query,
+        "time": result["time"],
+        "server_metrics": result.get("server_metrics", {}),
+        "execution_plan": result.get("execution_plan", {}),
+        "execution_plan_file": plan_file,
+        "query_store": result.get("query_store"),
+        "warnings": combined_warnings,
+        "validation": validation_info,
+        "guardrail_warnings": guardrail_warnings,
+    }
+
+
+def _build_raw_runs(run_results):
+    return [
+        {"time": run_result["time"], "server_metrics": run_result.get("server_metrics", {})}
+        for run_result in run_results
+    ]
+
+
+def _build_multi_json_result(
+    label,
+    query,
+    aggregated_result,
+    plan_file,
+    validation_info,
+    guardrail_warnings,
+    run_results,
+    num_runs,
+):
+    combined_warnings = aggregated_result.get("warnings", []) + guardrail_warnings
+    return {
+        "label": label,
+        "query": query,
+        "runs": num_runs,
+        "time": aggregated_result["time"],
+        "server_metrics": aggregated_result.get("server_metrics", {}),
+        "execution_plan": aggregated_result.get("execution_plan", {}),
+        "execution_plan_file": plan_file,
+        "query_store": aggregated_result.get("query_store"),
+        "warnings": combined_warnings,
+        "validation": validation_info,
+        "guardrail_warnings": guardrail_warnings,
+        "raw_runs": _build_raw_runs(run_results),
+    }
+
+
+def _run_single_variant(query, bench_conn, variant_index, total_variants, label, validation_info, guardrail_warnings):
+    result = run_query(query, conn=bench_conn)
+    if result["error"]:
+        logger.error(
+            "Test %d/%d [%s] — Error: %s",
+            variant_index,
+            total_variants,
+            label,
+            result["error"],
+        )
+        return None, None, _reset_bench_conn(bench_conn, label)
+
+    _print_variant_result(result, variant_index, total_variants, label, num_runs=1)
+    plan_file = _save_plan_if_present(result, variant_index)
+    all_result = {**result, "label": label}
+    json_result = _build_single_json_result(
+        label,
+        query,
+        result,
+        plan_file,
+        validation_info,
+        guardrail_warnings,
+    )
+    return all_result, json_result, bench_conn
+
+
+def _run_multi_variant(
+    query,
+    bench_conn,
+    variant_index,
+    total_variants,
+    label,
+    num_runs,
+    validation_info,
+    guardrail_warnings,
+):
+    run_results = []
+    for run_index in range(num_runs):
+        result = run_query(query, collect_plan=(run_index == 0), conn=bench_conn)
+        if not result["error"]:
+            run_results.append(result)
+            continue
+
+        logger.warning("[%s] run %d/%d error: %s", label, run_index + 1, num_runs, result["error"])
+        bench_conn = _reset_bench_conn(bench_conn, label)
+
+    if not run_results:
+        logger.error("Test %d/%d [%s] — All %d runs failed", variant_index, total_variants, label, num_runs)
+        return None, None, bench_conn
+
+    aggregated_result = aggregate_runs(run_results)
+    _print_variant_result(
+        aggregated_result,
+        variant_index,
+        total_variants,
+        label,
+        num_runs=len(run_results),
+    )
+    plan_file = _save_plan_if_present(aggregated_result, variant_index)
+    all_result = {**aggregated_result, "label": label}
+    json_result = _build_multi_json_result(
+        label,
+        query,
+        aggregated_result,
+        plan_file,
+        validation_info,
+        guardrail_warnings,
+        run_results,
+        num_runs,
+    )
+    return all_result, json_result, bench_conn
 
 
 def main():
@@ -324,84 +541,45 @@ def main():
     json_results = []
 
     try:
-        for i, (label, query) in enumerate(variants):
-            guardrail_warnings, blocked = _check_guardrails(base_query, query, label)
-            if blocked:
-                continue
-
-            validation_info, blocked = _check_row_count(base_count, query, label, val_conn)
+        total_variants = len(variants)
+        for variant_index, (label, query) in enumerate(variants, start=1):
+            guardrail_warnings, validation_info, blocked = _prepare_variant_execution(
+                base_query,
+                query,
+                label,
+                base_count,
+                val_conn,
+            )
             if blocked:
                 continue
 
             if num_runs == 1:
-                result = run_query(query, conn=bench_conn)
-
-                if result["error"]:
-                    logger.error("Test %d/%d [%s] — Error: %s", i + 1, len(variants), label, result["error"])
-                    bench_conn = _reset_bench_conn(bench_conn, label)
-                    continue
-
-                _print_variant_result(result, i + 1, len(variants), label, num_runs=1)
-
-                plan_file = None
-                if result.get("plan_xml"):
-                    plan_file = _save_plan(result["plan_xml"], i + 1)
-
-                all_results.append({**result, "label": label})
-                combined_warnings = result.get("warnings", []) + guardrail_warnings
-                json_results.append({
-                    "label": label,
-                    "query": query,
-                    "time": result["time"],
-                    "server_metrics": result.get("server_metrics", {}),
-                    "execution_plan": result.get("execution_plan", {}),
-                    "execution_plan_file": plan_file,
-                    "query_store": result.get("query_store"),
-                    "warnings": combined_warnings,
-                    "validation": validation_info,
-                    "guardrail_warnings": guardrail_warnings,
-                })
+                all_result, json_result, bench_conn = _run_single_variant(
+                    query,
+                    bench_conn,
+                    variant_index,
+                    total_variants,
+                    label,
+                    validation_info,
+                    guardrail_warnings,
+                )
             else:
-                run_results = []
-                for run_i in range(num_runs):
-                    result = run_query(query, collect_plan=(run_i == 0), conn=bench_conn)
-                    if not result["error"]:
-                        run_results.append(result)
-                    else:
-                        logger.warning("[%s] run %d/%d error: %s", label, run_i + 1, num_runs, result["error"])
-                        bench_conn = _reset_bench_conn(bench_conn, label)
+                all_result, json_result, bench_conn = _run_multi_variant(
+                    query,
+                    bench_conn,
+                    variant_index,
+                    total_variants,
+                    label,
+                    num_runs,
+                    validation_info,
+                    guardrail_warnings,
+                )
 
-                if not run_results:
-                    logger.error("Test %d/%d [%s] — All %d runs failed", i + 1, len(variants), label, num_runs)
-                    continue
+            if all_result is None:
+                continue
 
-                agg = aggregate_runs(run_results)
-                _print_variant_result(agg, i + 1, len(variants), label, num_runs=len(run_results))
-
-                plan_file = None
-                if agg.get("plan_xml"):
-                    plan_file = _save_plan(agg["plan_xml"], i + 1)
-
-                all_results.append({**agg, "label": label})
-                combined_warnings = agg.get("warnings", []) + guardrail_warnings
-                raw_runs = [
-                    {"time": r["time"], "server_metrics": r.get("server_metrics", {})}
-                    for r in run_results
-                ]
-                json_results.append({
-                    "label": label,
-                    "query": query,
-                    "runs": num_runs,
-                    "time": agg["time"],
-                    "server_metrics": agg.get("server_metrics", {}),
-                    "execution_plan": agg.get("execution_plan", {}),
-                    "execution_plan_file": plan_file,
-                    "query_store": agg.get("query_store"),
-                    "warnings": combined_warnings,
-                    "validation": validation_info,
-                    "guardrail_warnings": guardrail_warnings,
-                    "raw_runs": raw_runs,
-                })
+            all_results.append(all_result)
+            json_results.append(json_result)
     finally:
         if val_conn is not None:
             val_conn.close()
