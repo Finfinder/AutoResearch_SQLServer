@@ -1,0 +1,82 @@
+name: Reusable Version Consistency
+
+on:
+  workflow_call:
+    inputs:
+      source-repository:
+        description: Repository containing version targets, README and descriptor files.
+        required: true
+        type: string
+      repository-ref:
+        description: Git ref or SHA to validate.
+        required: true
+        type: string
+      version-targets-path:
+        description: Relative path to version target descriptors inside the target repository.
+        required: false
+        default: .github/versioning/version-targets.json
+        type: string
+      readme-targets-path:
+        description: Relative path to README target descriptors inside the target repository.
+        required: false
+        default: .github/versioning/readme-targets.json
+        type: string
+      expected-version:
+        description: Optional expected version in X.Y.Z or vX.Y.Z format.
+        required: false
+        default: ''
+        type: string
+
+permissions: {}
+
+jobs:
+  version-consistency:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.source-repository }}
+          ref: ${{ inputs.repository-ref }}
+          fetch-depth: 1
+          token: ${{ github.token }}
+          path: repository
+
+      - name: Validate version consistency
+        id: validate
+        shell: pwsh
+        run: |
+          $arguments = @{
+            RepositoryRoot = "${{ github.workspace }}/repository"
+            VersionTargetsPath = "${{ github.workspace }}/repository/${{ inputs.version-targets-path }}"
+            ReadmeTargetsPath = "${{ github.workspace }}/repository/${{ inputs.readme-targets-path }}"
+          }
+
+          $expectedVersion = "${{ inputs.expected-version }}"
+          if (-not [string]::IsNullOrWhiteSpace($expectedVersion)) {
+            $arguments.ExpectedVersion = $expectedVersion
+          }
+
+          try {
+            $result = & "${{ github.workspace }}/repository/scripts/validate-version-consistency.ps1" @arguments
+            "detected-version=$($result.Version)" >> $env:GITHUB_OUTPUT
+
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Version Consistency'
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: ${{ inputs.source-repository }}"
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Ref: ${{ inputs.repository-ref }}"
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Version: $($result.Version)"
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Validated targets: $($result.ValidatedTargetCount)"
+          }
+          catch {
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Version Consistency'
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: ${{ inputs.source-repository }}"
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Ref: ${{ inputs.repository-ref }}"
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '- Status: failed'
+            $errorMessage = $_.Exception.Message
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Error: $errorMessage"
+            throw
+          }

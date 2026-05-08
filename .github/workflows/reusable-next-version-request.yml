@@ -1,0 +1,76 @@
+name: Reusable Next Version Request
+
+on:
+  workflow_call:
+    inputs:
+      source-repository:
+        description: Repository containing the release manifest.
+        required: true
+        type: string
+      repository-ref:
+        description: Git ref or SHA to validate.
+        required: true
+        type: string
+      manifest-path:
+        description: Relative path to next-version.json inside the target repository.
+        required: false
+        default: .github/release/next-version.json
+        type: string
+      expected-release-version:
+        description: Expected release version derived from the release tag.
+        required: true
+        type: string
+      artifact-name:
+        description: Artifact name used for downstream handoff.
+        required: false
+        default: next-version-request
+        type: string
+
+permissions: {}
+
+jobs:
+  next-version-request:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.source-repository }}
+          ref: ${{ inputs.repository-ref }}
+          fetch-depth: 1
+          token: ${{ github.token }}
+          path: repository
+
+      - name: Validate next version request
+        id: validate
+        shell: pwsh
+        run: |
+          $result = & "${{ github.workspace }}/repository/scripts/validate-next-version-request.ps1" `
+            -RepositoryRoot "${{ github.workspace }}/repository" `
+            -ManifestPath "${{ github.workspace }}/repository/${{ inputs.manifest-path }}" `
+            -OutputDirectory "${{ runner.temp }}/next-version-request" `
+            -ExpectedReleaseVersion "${{ inputs.expected-release-version }}"
+
+          "artifact-path=$($result.ArtifactPath)" >> $env:GITHUB_OUTPUT
+          "release-version=$($result.ReleaseVersion)" >> $env:GITHUB_OUTPUT
+          "next-version=$($result.NextVersion)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload next version request artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ steps.validate.outputs.artifact-path }}
+          if-no-files-found: error
+
+      - name: Write summary
+        if: always()
+        shell: pwsh
+        run: |
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Next Version Request'
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: ${{ inputs.source-repository }}"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Ref: ${{ inputs.repository-ref }}"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Release version: ${{ steps.validate.outputs.release-version }}"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Next version: ${{ steps.validate.outputs.next-version }}"

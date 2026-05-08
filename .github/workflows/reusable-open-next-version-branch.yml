@@ -1,0 +1,122 @@
+name: Reusable Open Next Version Branch
+
+on:
+  workflow_call:
+    inputs:
+      workflow-run-id:
+        description: Workflow run ID of the successful Release workflow.
+        required: true
+        type: string
+      source-repository:
+        description: Repository containing the Release workflow run and target branch.
+        required: true
+        type: string
+      artifact-name:
+        description: Artifact name containing next-version.json.
+        required: false
+        default: next-version-request
+        type: string
+      base-branch:
+        description: Branch used as the source of the next version branch.
+        required: false
+        default: main
+        type: string
+      version-targets-path:
+        description: Relative path to version target descriptors inside the target repository.
+        required: false
+        default: .github/versioning/version-targets.json
+        type: string
+      readme-targets-path:
+        description: Relative path to README target descriptors inside the target repository.
+        required: false
+        default: .github/versioning/readme-targets.json
+        type: string
+
+permissions: {}
+
+jobs:
+  open-next-version-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    concurrency:
+      group: open-next-version-${{ inputs.source-repository }}-${{ inputs.workflow-run-id }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout target repository
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ inputs.source-repository }}
+          ref: ${{ inputs.base-branch }}
+          fetch-depth: 0
+          token: ${{ github.token }}
+          path: repository
+
+      - name: Configure Git author
+        working-directory: repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Download next version request artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          github-token: ${{ github.token }}
+          repository: ${{ inputs.source-repository }}
+          run-id: ${{ inputs.workflow-run-id }}
+          path: ${{ github.workspace }}/repository/.github/release/_workflow/request
+
+      - name: Locate next version manifest
+        id: manifest
+        shell: pwsh
+        run: |
+          $manifest = Get-ChildItem -LiteralPath "${{ github.workspace }}/repository/.github/release/_workflow/request" -Recurse -File |
+            Where-Object { $_.Name -eq 'next-version.json' } |
+            Select-Object -First 1
+
+          if ($null -eq $manifest) {
+            throw 'Artifact next-version-request does not contain next-version.json.'
+          }
+
+          "path=$($manifest.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Open next version branch locally
+        id: open
+        shell: pwsh
+        run: |
+          $result = & "${{ github.workspace }}/repository/scripts/open-next-version-branch.ps1" `
+            -RepositoryRoot "${{ github.workspace }}/repository" `
+            -ManifestPath "${{ steps.manifest.outputs.path }}" `
+            -VersionTargetsPath "${{ github.workspace }}/repository/${{ inputs.version-targets-path }}" `
+            -ReadmeTargetsPath "${{ github.workspace }}/repository/${{ inputs.readme-targets-path }}" `
+            -BaseBranch "${{ inputs.base-branch }}"
+
+          "status=$($result.Status)" >> $env:GITHUB_OUTPUT
+          "branch-name=$($result.BranchName)" >> $env:GITHUB_OUTPUT
+          "commit-created=$([string]$result.CommitCreated).ToLowerInvariant()" >> $env:GITHUB_OUTPUT
+
+      - name: Clean workflow scratch files
+        if: always()
+        shell: pwsh
+        run: |
+          $scratchRoot = "${{ github.workspace }}/repository/.github/release/_workflow"
+          if (Test-Path -LiteralPath $scratchRoot) {
+            Remove-Item -LiteralPath $scratchRoot -Recurse -Force
+          }
+
+      - name: Push next version branch
+        if: ${{ steps.open.outputs.status == 'updated' && steps.open.outputs.commit-created == 'true' }}
+        working-directory: repository
+        run: git push origin HEAD:${{ steps.open.outputs.branch-name }}
+
+      - name: Write summary
+        shell: pwsh
+        run: |
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Open Next Version Branch'
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: ${{ inputs.source-repository }}"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Workflow run: ${{ inputs.workflow-run-id }}"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Status: ${{ steps.open.outputs.status }}"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Branch: ${{ steps.open.outputs.branch-name }}"
