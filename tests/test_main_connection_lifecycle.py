@@ -67,7 +67,15 @@ class TestResetBenchConn:
 
 
 class TestBenchConnLifecycleInMain:
-    def _run_main(self, variants, run_query_side_effect, runs=1, get_conn_side_effect=None):
+    def _run_main(
+        self,
+        variants,
+        run_query_side_effect,
+        runs=1,
+        get_conn_side_effect=None,
+        guardrail_result=([], False),
+        row_count_result=(None, False),
+    ):
         bench_conn = MagicMock()
         collected_results = []
 
@@ -80,8 +88,8 @@ class TestBenchConnLifecycleInMain:
              patch("main._compute_base_count", return_value=(None, None)), \
              patch("main.get_connection", side_effect=get_conn_values), \
              patch("main.run_query", side_effect=run_query_side_effect), \
-             patch("main._check_guardrails", return_value=([], False)), \
-             patch("main._check_row_count", return_value=(None, False)), \
+             patch("main._check_guardrails", return_value=guardrail_result), \
+             patch("main._check_row_count", return_value=row_count_result), \
              patch("main.save_results", side_effect=lambda r: collected_results.extend(r)), \
              patch("main._print_ranking"), \
              patch("main._print_variant_result"):
@@ -160,6 +168,36 @@ class TestBenchConnLifecycleInMain:
         assert len(collected_results) == 1
         assert collected_results[0]["label"] == "v2"
 
+    def test_single_run_collects_expected_json_result(self):
+        _, collected_results = self._run_main(
+            variants=[("base", "SELECT 1")],
+            run_query_side_effect=[_success_result()],
+            runs=1,
+        )
+
+        assert len(collected_results) == 1
+        result = collected_results[0]
+        assert result["label"] == "base"
+        assert result["query"] == "SELECT 1"
+        assert result["time"] == pytest.approx(0.1)
+        assert result["guardrail_warnings"] == []
+        assert result["warnings"] == []
+        assert result["validation"] is None
+        assert result["execution_plan_file"] is None
+
+    def test_single_run_preserves_warning_merge_order(self):
+        result_with_warning = _success_result()
+        result_with_warning["warnings"] = ["runtime warning"]
+
+        _, collected_results = self._run_main(
+            variants=[("base", "SELECT 1")],
+            run_query_side_effect=[result_with_warning],
+            runs=1,
+            guardrail_result=(["guardrail warning"], False),
+        )
+
+        assert collected_results[0]["warnings"] == ["runtime warning", "guardrail warning"]
+
     def test_bench_conn_reset_after_multi_run_error(self):
         bench_conn = MagicMock()
         new_bench_conn = MagicMock()
@@ -203,6 +241,41 @@ class TestBenchConnLifecycleInMain:
             main()
 
         assert bench_conn.close.call_count == 1
+
+    def test_multi_run_collects_expected_json_result(self):
+        _, collected_results = self._run_main(
+            variants=[("v1", "SELECT 1")],
+            run_query_side_effect=[_success_result(), _success_result()],
+            runs=2,
+        )
+
+        assert len(collected_results) == 1
+        result = collected_results[0]
+        assert result["label"] == "v1"
+        assert result["query"] == "SELECT 1"
+        assert result["runs"] == 2
+        assert result["guardrail_warnings"] == []
+        assert result["warnings"] == []
+        assert result["validation"] is None
+        assert result["execution_plan_file"] is None
+        assert isinstance(result["time"], dict)
+        assert result["time"]["median"] == pytest.approx(0.1)
+        assert len(result["raw_runs"]) == 2
+        assert result["raw_runs"][0]["time"] == pytest.approx(0.1)
+        assert result["raw_runs"][1]["time"] == pytest.approx(0.1)
+
+    def test_multi_run_preserves_warning_merge_order(self):
+        first_run = _success_result()
+        first_run["warnings"] = ["aggregate warning"]
+
+        _, collected_results = self._run_main(
+            variants=[("v1", "SELECT 1")],
+            run_query_side_effect=[first_run, _success_result()],
+            runs=2,
+            guardrail_result=(["guardrail warning"], False),
+        )
+
+        assert collected_results[0]["warnings"] == ["aggregate warning", "guardrail warning"]
 
     def test_benchmark_continues_when_reconnect_fails(self):
         bench_conn = MagicMock()
