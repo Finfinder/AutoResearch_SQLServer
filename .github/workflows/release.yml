@@ -11,22 +11,20 @@ jobs:
   version-consistency:
     permissions:
       contents: read
-    uses: Finfinder/AI_Instruction/.github/workflows/reusable-version-consistency.yml@main
+    uses: Finfinder/AutoResearch_SQLServer/.github/workflows/reusable-version-consistency.yml@main
     with:
       source-repository: ${{ github.repository }}
       repository-ref: ${{ github.ref }}
       expected-version: ${{ github.ref_name }}
-    secrets: inherit
 
   next-version-request:
     permissions:
       contents: read
-    uses: Finfinder/AI_Instruction/.github/workflows/reusable-next-version-request.yml@main
+    uses: Finfinder/AutoResearch_SQLServer/.github/workflows/reusable-next-version-request.yml@main
     with:
       source-repository: ${{ github.repository }}
       repository-ref: ${{ github.ref }}
       expected-release-version: ${{ github.ref_name }}
-    secrets: inherit
 
   source-bundle:
     needs: [version-consistency, next-version-request]

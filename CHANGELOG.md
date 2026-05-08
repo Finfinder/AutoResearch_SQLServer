@@ -15,12 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - `main.py` now resolves `query.sql` from bundled resources and writes `.env`-driven runtime outputs (`results.json`, `logs/`, `plans/`) relative to the executable directory in frozen mode
-- `.github/workflows/release.yml`: inline validation of `next_version` manifest replaced by shared reusable workflow `Finfinder/AI_Instruction/.github/workflows/reusable-next-version-request.yml`; added `tests/test_release_artifacts.py` asserting the shared adapter is used and no inline validator remains.
+- `.github/workflows/release.yml`, `.github/workflows/version-consistency.yml`, and `.github/workflows/open-next-version-branch.yml` now call repository-local reusable workflows plus bundled PowerShell helpers, removing the hard dependency on reusable workflows hosted in the private `Finfinder/AI_Instruction` repository for this public repo.
 
 ### Added
 
 - `.github/workflows/open-next-version-branch.yml`: automated next-version branch creation triggered by successful Release workflow; updates `version.py` and `README.md` with the `next_version` provided before the release
-- `.github/workflows/release.yml`: new Release workflow adapter uploading `next-version-request` artifact for the central automation workflow in `AI_Instruction`
+- `.github/workflows/release.yml`: new Release workflow adapter uploading `next-version-request` artifact for the downstream next-version branch automation
+- Repository-local release helpers: `.github/workflows/reusable-version-consistency.yml`, `.github/workflows/reusable-next-version-request.yml`, `.github/workflows/reusable-open-next-version-branch.yml`, plus PowerShell scripts in `scripts/`, so release validation and next-branch handoff can run without cross-repo workflow access
 
 - `version.py`: canonical version source (`__version__ = "0.1.0"`) used by README badge and future version consistency checks
 - Version badge in `README.md` linking to `version.py`

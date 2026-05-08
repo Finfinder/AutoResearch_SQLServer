@@ -15,10 +15,9 @@ jobs:
     permissions:
       actions: read
       contents: write
-    uses: Finfinder/AI_Instruction/.github/workflows/reusable-open-next-version-branch.yml@main
+    uses: Finfinder/AutoResearch_SQLServer/.github/workflows/reusable-open-next-version-branch.yml@main
     with:
       workflow-run-id: ${{ github.event.workflow_run.id }}
       source-repository: ${{ github.repository }}
       artifact-name: next-version-request
       base-branch: main
-    secrets: inherit
