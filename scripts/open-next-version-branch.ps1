@@ -146,7 +146,8 @@ function Update-TargetFile {
     }
 
     if ($updateResult.Content -ne $originalContent) {
-        Set-Content -LiteralPath $targetPath -Value $updateResult.Content -Encoding UTF8
+        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($targetPath, $updateResult.Content, $utf8NoBom)
         return [pscustomobject]@{
             Changed = $true
             RelativePath = Get-RelativePath -BasePath $RepositoryRoot -TargetPath $targetPath

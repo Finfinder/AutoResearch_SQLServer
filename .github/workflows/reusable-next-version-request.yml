@@ -46,12 +46,15 @@ jobs:
       - name: Validate next version request
         id: validate
         shell: pwsh
+        env:
+          MANIFEST_PATH: ${{ inputs.manifest-path }}
+          EXPECTED_RELEASE_VERSION: ${{ inputs.expected-release-version }}
         run: |
           $result = & "${{ github.workspace }}/repository/scripts/validate-next-version-request.ps1" `
             -RepositoryRoot "${{ github.workspace }}/repository" `
-            -ManifestPath "${{ github.workspace }}/repository/${{ inputs.manifest-path }}" `
+            -ManifestPath "${{ github.workspace }}/repository/$env:MANIFEST_PATH" `
             -OutputDirectory "${{ runner.temp }}/next-version-request" `
-            -ExpectedReleaseVersion "${{ inputs.expected-release-version }}"
+            -ExpectedReleaseVersion $env:EXPECTED_RELEASE_VERSION
 
           "artifact-path=$($result.ArtifactPath)" >> $env:GITHUB_OUTPUT
           "release-version=$($result.ReleaseVersion)" >> $env:GITHUB_OUTPUT
@@ -67,10 +70,13 @@ jobs:
       - name: Write summary
         if: always()
         shell: pwsh
+        env:
+          SOURCE_REPOSITORY: ${{ inputs.source-repository }}
+          REPOSITORY_REF: ${{ inputs.repository-ref }}
         run: |
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Next Version Request'
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: ${{ inputs.source-repository }}"
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Ref: ${{ inputs.repository-ref }}"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: $env:SOURCE_REPOSITORY"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Ref: $env:REPOSITORY_REF"
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Release version: ${{ steps.validate.outputs.release-version }}"
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Next version: ${{ steps.validate.outputs.next-version }}"

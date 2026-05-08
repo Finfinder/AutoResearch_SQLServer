@@ -85,13 +85,17 @@ jobs:
       - name: Open next version branch locally
         id: open
         shell: pwsh
+        env:
+          VERSION_TARGETS_PATH: ${{ inputs.version-targets-path }}
+          README_TARGETS_PATH: ${{ inputs.readme-targets-path }}
+          BASE_BRANCH: ${{ inputs.base-branch }}
         run: |
           $result = & "${{ github.workspace }}/repository/scripts/open-next-version-branch.ps1" `
             -RepositoryRoot "${{ github.workspace }}/repository" `
             -ManifestPath "${{ steps.manifest.outputs.path }}" `
-            -VersionTargetsPath "${{ github.workspace }}/repository/${{ inputs.version-targets-path }}" `
-            -ReadmeTargetsPath "${{ github.workspace }}/repository/${{ inputs.readme-targets-path }}" `
-            -BaseBranch "${{ inputs.base-branch }}"
+            -VersionTargetsPath "${{ github.workspace }}/repository/$env:VERSION_TARGETS_PATH" `
+            -ReadmeTargetsPath "${{ github.workspace }}/repository/$env:README_TARGETS_PATH" `
+            -BaseBranch $env:BASE_BRANCH
 
           "status=$($result.Status)" >> $env:GITHUB_OUTPUT
           "branch-name=$($result.BranchName)" >> $env:GITHUB_OUTPUT
@@ -113,10 +117,13 @@ jobs:
 
       - name: Write summary
         shell: pwsh
+        env:
+          SOURCE_REPOSITORY: ${{ inputs.source-repository }}
+          WORKFLOW_RUN_ID: ${{ inputs.workflow-run-id }}
         run: |
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Open Next Version Branch'
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: ${{ inputs.source-repository }}"
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Workflow run: ${{ inputs.workflow-run-id }}"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: $env:SOURCE_REPOSITORY"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Workflow run: $env:WORKFLOW_RUN_ID"
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Status: ${{ steps.open.outputs.status }}"
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Branch: ${{ steps.open.outputs.branch-name }}"
