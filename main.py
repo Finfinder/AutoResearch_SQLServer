@@ -13,13 +13,15 @@ from aggregator import aggregate_runs
 from db import get_connection
 from guardrails import check_variant
 from runner import run_query
-from validator import get_row_count, validate_row_count
+from validator import build_strict_validation_context, get_row_count, validate_query_results
 from variants import generate_variants, VariantGenerationError
 
 logger = logging.getLogger(__name__)
 result_logger = logging.getLogger("benchmark")
 
 _VARIANT_WARNING_FORMAT = "[%s]: %s"
+AUTO_STRICT_VALIDATION_ROW_THRESHOLD = 200
+_VALIDATION_CONNECTION_UNAVAILABLE = "Validation connection unavailable"
 
 
 def get_resource_path(relative_path):
@@ -47,6 +49,15 @@ def parse_args():
         default=1,
         metavar="N",
         help="Number of benchmark runs per variant (default: 1, max: 100)",
+    )
+    parser.add_argument(
+        "--strict-validation",
+        action="store_true",
+        help=(
+            "Force strict runtime validation based on full result hashing. "
+            f"Without this flag, strict validation is applied automatically only below "
+            f"{AUTO_STRICT_VALIDATION_ROW_THRESHOLD} base rows."
+        ),
     )
     args = parser.parse_args()
     args.runs = max(1, min(args.runs, 100))
@@ -322,7 +333,7 @@ def _reset_bench_conn(bench_conn, label=""):
         return None
 
 
-def _compute_base_count(base_query):
+def _compute_base_count(base_query, strict_requested=False):
     try:
         conn = get_connection()
         try:
@@ -330,12 +341,60 @@ def _compute_base_count(base_query):
             logger.info("Base row count: %d", count)
             return count, conn
         except Exception as exc:
+            if strict_requested:
+                logger.warning(
+                    "Could not compute base row count — strict validation will attempt full result hashing: %s",
+                    exc,
+                )
+                return None, conn
             conn.close()
             logger.warning("Could not compute base row count — runtime validation disabled: %s", exc)
             return None, None
     except Exception as exc:
         logger.warning("Could not open connection for row count — runtime validation disabled: %s", exc)
         return None, None
+
+
+def _resolve_strict_validation_source(base_count, strict_requested):
+    if strict_requested:
+        return "cli"
+    if base_count is not None and base_count < AUTO_STRICT_VALIDATION_ROW_THRESHOLD:
+        return "auto"
+    return None
+
+
+def _build_base_strict_context(base_query, base_count, val_conn, strict_requested):
+    strict_source = _resolve_strict_validation_source(base_count, strict_requested)
+    if strict_source is None:
+        return base_count, None, None
+    if val_conn is None:
+        return (
+            base_count,
+            {
+                "ordered": False,
+                "base_signature": None,
+                "base_row_count": base_count,
+                "fallback_reason": _VALIDATION_CONNECTION_UNAVAILABLE,
+                "warnings": [_VALIDATION_CONNECTION_UNAVAILABLE],
+            },
+            strict_source,
+        )
+
+    strict_context = build_strict_validation_context(base_query, val_conn)
+    strict_base_count = strict_context.get("base_row_count")
+    if base_count is None and strict_base_count is not None:
+        base_count = strict_base_count
+        logger.info("Base row count recovered from strict validation context: %d", base_count)
+
+    if strict_source == "cli":
+        logger.info("Strict validation forced by CLI.")
+    else:
+        logger.info(
+            "Strict validation enabled automatically for base row count below %d.",
+            AUTO_STRICT_VALIDATION_ROW_THRESHOLD,
+        )
+
+    return base_count, strict_context, strict_source
 
 
 def _check_guardrails(base_query, query, label):
@@ -354,31 +413,79 @@ def _check_guardrails(base_query, query, label):
     return warnings, False
 
 
-def _check_row_count(base_count, query, label, val_conn):
-    if base_count is None or val_conn is None:
-        return None, False
+def _build_validation_connection_unavailable_info(base_count, strict_context, strict_source):
+    fallback_reason = (strict_context or {}).get("fallback_reason") or _VALIDATION_CONNECTION_UNAVAILABLE
+    warnings = list((strict_context or {}).get("warnings", [])) or [fallback_reason]
+    return {
+        "is_valid": True,
+        "base_count": base_count,
+        "variant_count": -1,
+        "message": (
+            f"Strict validation skipped — {fallback_reason}; base row count unavailable"
+            if base_count is None
+            else f"Strict validation skipped — {fallback_reason}; runtime validation unavailable"
+        ),
+        "mode": "row_count",
+        "ordered": (strict_context or {}).get("ordered", False),
+        "strict_requested": True,
+        "strict_applied": False,
+        "strict_source": strict_source,
+        "fallback_reason": fallback_reason,
+        "warnings": warnings,
+    }
 
-    val_result = validate_row_count(base_count, query, val_conn)
-    validation_info = {
+
+def _serialize_validation_result(val_result):
+    if hasattr(val_result, "to_dict"):
+        return val_result.to_dict()
+    return {
         "is_valid": val_result.is_valid,
         "base_count": val_result.base_count,
         "variant_count": val_result.variant_count,
         "message": val_result.message,
     }
+
+
+def _check_row_count(base_count, query, label, val_conn, strict_context=None, strict_source=None):
+    if val_conn is None:
+        if strict_source is None:
+            return None, False
+        validation_info = _build_validation_connection_unavailable_info(base_count, strict_context, strict_source)
+        logger.warning(_VARIANT_WARNING_FORMAT, label, validation_info["message"])
+        return validation_info, False
+    if base_count is None and strict_source is None:
+        return None, False
+
+    val_result = validate_query_results(
+        base_count,
+        query,
+        val_conn,
+        strict_requested=strict_source is not None,
+        strict_source=strict_source,
+        strict_context=strict_context,
+    )
+    validation_info = _serialize_validation_result(val_result)
     if not val_result.is_valid:
-        logger.warning("Row count mismatch blocked [%s]: %s", label, val_result.message)
+        logger.warning("Validation mismatch blocked [%s]: %s", label, val_result.message)
         return validation_info, True
-    if val_result.variant_count == -1:
+    if val_result.fallback_reason or val_result.variant_count == -1:
         logger.warning(_VARIANT_WARNING_FORMAT, label, val_result.message)
     return validation_info, False
 
 
-def _prepare_variant_execution(base_query, query, label, base_count, val_conn):
+def _prepare_variant_execution(base_query, query, label, base_count, val_conn, strict_context=None, strict_source=None):
     guardrail_warnings, blocked = _check_guardrails(base_query, query, label)
     if blocked:
         return guardrail_warnings, None, True
 
-    validation_info, blocked = _check_row_count(base_count, query, label, val_conn)
+    validation_info, blocked = _check_row_count(
+        base_count,
+        query,
+        label,
+        val_conn,
+        strict_context,
+        strict_source,
+    )
     return guardrail_warnings, validation_info, blocked
 
 
@@ -528,7 +635,16 @@ def main():
         logger.info("No variants generated for this query.")
         return
 
-    base_count, val_conn = _compute_base_count(base_query)
+    base_count, val_conn = _compute_base_count(
+        base_query,
+        strict_requested=getattr(args, "strict_validation", False),
+    )
+    base_count, strict_context, strict_source = _build_base_strict_context(
+        base_query,
+        base_count,
+        val_conn,
+        getattr(args, "strict_validation", False),
+    )
 
     bench_conn = None
     try:
@@ -549,6 +665,8 @@ def main():
                 label,
                 base_count,
                 val_conn,
+                strict_context,
+                strict_source,
             )
             if blocked:
                 continue
