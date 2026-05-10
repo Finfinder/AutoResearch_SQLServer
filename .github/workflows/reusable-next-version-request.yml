@@ -35,7 +35,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout target repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           repository: ${{ inputs.source-repository }}
           ref: ${{ inputs.repository-ref }}

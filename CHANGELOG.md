@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - `.github/workflows/third-party-action-pinning.yml` and `.github/workflows/reusable-third-party-action-pinning.yml` — repo-local mirror of the monorepo SHA-pinning guard enforcing full 40-character SHA for third-party actions (stage 1)
 
+- `.github/actions-security/zizmor.yml` — repo-local mirror of the canonical zizmor policy for third-party action pinning
+
 - Hybrid runtime validation for query variants: `main.py` now supports `--strict-validation`, `validator.py` can hash complete result sets, strict mode is also enabled automatically below 200 base rows, and unsupported legacy SQL types or oversized LOB values degrade explicitly back to row count validation
 - `tests/test_validator.py` — strict validation coverage for full-result hashing, `ORDER BY` semantics, same-count semantic mismatches, fallback for legacy types / large LOBs, and canonicalization of datetime / float / XML values
 - `tests/test_main_connection_lifecycle.py` — coverage for strict validation activation sources (`cli` / `auto`) and persistence of fallback metadata in `results.json`
@@ -25,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - `.github/workflows/reusable-version-consistency.yml`, `reusable-next-version-request.yml`, `reusable-open-next-version-branch.yml` — untrusted `${{ inputs.* }}` expressions moved from PowerShell `run:` blocks to `env:` variables and read via `$env:` to prevent expression injection attacks (GitHub Actions security best practice for `workflow_call` inputs)
 - `tests/test_release_artifacts.py` — new contract test `test_reusable_workflows_pass_untrusted_inputs_via_environment_variables` verifies the `env:` + `$env:` pattern is enforced in all three reusable workflows
+
+### Changed
+
+- `.github/workflows/reusable-version-consistency.yml`, `reusable-next-version-request.yml`, `reusable-open-next-version-branch.yml` — synced to canonical mirror via centralized sync engine; removed cross-repo AI_Instruction checkout
+- `.github/workflows/reusable-third-party-action-pinning.yml` — synced to repo-local policy bundle; policy resolved from `.github/actions-security/zizmor.yml` instead of cross-repo checkout
+- `scripts/open-next-version-branch.ps1` — synced to canonical version
+- `tests/test_release_artifacts.py` — moved `import main` inside test methods to decouple pyodbc import from pytest collection; extended with `test_third_party_action_pinning_uses_repo_local_policy_bundle`
 
 ### Fixed
 
