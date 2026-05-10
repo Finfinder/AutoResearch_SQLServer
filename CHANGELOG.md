@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `.github/workflows/third-party-action-pinning.yml` and `.github/workflows/reusable-third-party-action-pinning.yml` — repo-local mirror of the monorepo SHA-pinning guard enforcing full 40-character SHA for third-party actions (stage 1)
+
 - Hybrid runtime validation for query variants: `main.py` now supports `--strict-validation`, `validator.py` can hash complete result sets, strict mode is also enabled automatically below 200 base rows, and unsupported legacy SQL types or oversized LOB values degrade explicitly back to row count validation
 - `tests/test_validator.py` — strict validation coverage for full-result hashing, `ORDER BY` semantics, same-count semantic mismatches, fallback for legacy types / large LOBs, and canonicalization of datetime / float / XML values
 - `tests/test_main_connection_lifecycle.py` — coverage for strict validation activation sources (`cli` / `auto`) and persistence of fallback metadata in `results.json`
