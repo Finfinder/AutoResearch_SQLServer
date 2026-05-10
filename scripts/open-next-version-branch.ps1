@@ -18,6 +18,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+
 . (Join-Path (Split-Path -Parent $PSCommandPath) 'version-target-strategies.ps1')
 . (Join-Path (Split-Path -Parent $PSCommandPath) 'next-version-manifest.ps1')
 
@@ -62,7 +64,7 @@ function Invoke-Git {
     $startInfo.CreateNoWindow = $true
     $startInfo.Arguments = [string]::Join(' ', ($Arguments | ForEach-Object {
         if ($_ -match '[\s"]') {
-            $escapedArgument = $_ -replace '(\\*)"', '$1$1\\"'
+            $escapedArgument = $_ -replace '(\\*)"', '$1$1\"'
             $escapedArgument = $escapedArgument -replace '(\\+)$', '$1$1'
             '"' + $escapedArgument + '"'
         }
@@ -146,7 +148,6 @@ function Update-TargetFile {
     }
 
     if ($updateResult.Content -ne $originalContent) {
-        $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
         [System.IO.File]::WriteAllText($targetPath, $updateResult.Content, $utf8NoBom)
         return [pscustomobject]@{
             Changed = $true
@@ -209,7 +210,7 @@ foreach ($target in (@($versionTargets) + @($readmeTargets))) {
 }
 
 $commitCreated = $false
-$commitMessage = "Start $nextVersion cycle after $releaseVersion release"
+$commitMessage = "Rozpocznij cykl $nextVersion po release $releaseVersion"
 
 if ($updatedFiles.Count -gt 0) {
     Invoke-Git -RepositoryRoot $resolvedRepositoryRoot -Arguments (@('add', '--') + $updatedFiles.ToArray()) | Out-Null

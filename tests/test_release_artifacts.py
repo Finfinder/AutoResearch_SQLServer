@@ -1,17 +1,20 @@
 from pathlib import Path
 from zipfile import ZipFile
 
-import main
 from scripts.build_release_artifacts import SOURCE_BUNDLE_FILES, build_source_bundle
 
 
 def test_get_resource_path_uses_project_root_when_not_frozen():
+    import main
+
     expected_path = Path(main.__file__).resolve().parent / "query.sql"
 
     assert main.get_resource_path("query.sql") == expected_path
 
 
 def test_get_runtime_output_path_uses_executable_directory_when_frozen(monkeypatch, tmp_path):
+    import main
+
     executable_path = tmp_path / "dist" / "AutoResearch_SQLServer.exe"
     executable_path.parent.mkdir(parents=True)
     executable_path.write_text("", encoding="utf-8")
@@ -128,3 +131,20 @@ def test_open_next_version_script_writes_utf8_without_bom():
     assert "$utf8NoBom = [System.Text.UTF8Encoding]::new($false)" in script_text
     assert "[System.IO.File]::WriteAllText($targetPath, $updateResult.Content, $utf8NoBom)" in script_text
     assert "Set-Content -LiteralPath $targetPath -Value $updateResult.Content -Encoding UTF8" not in script_text
+
+
+def test_third_party_action_pinning_uses_repo_local_policy_bundle():
+    repository_root = Path(__file__).resolve().parents[1]
+    wrapper_text = (repository_root / ".github" / "workflows" / "third-party-action-pinning.yml").read_text(
+        encoding="utf-8"
+    )
+    reusable_text = (
+        repository_root / ".github" / "workflows" / "reusable-third-party-action-pinning.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "uses: ./.github/workflows/reusable-third-party-action-pinning.yml" in wrapper_text
+    assert "Join-Path $repositoryRoot '.github/actions-security/zizmor.yml'" in reusable_text
+    assert "Policy source: repo-local mirror" in reusable_text
+    assert "automation-repository:" not in reusable_text
+    assert "Join-Path $env:RUNNER_TEMP 'zizmor-third-party-action-pinning.yml'" not in reusable_text
+    assert (repository_root / ".github" / "actions-security" / "zizmor.yml").exists()

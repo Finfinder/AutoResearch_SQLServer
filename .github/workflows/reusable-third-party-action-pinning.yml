@@ -46,24 +46,15 @@ jobs:
           REPOSITORY_REF: ${{ inputs.repository-ref }}
         run: |
           $repositoryRoot = "${{ github.workspace }}/repository"
-          $policyPath = Join-Path $env:RUNNER_TEMP 'zizmor-third-party-action-pinning.yml'
+          $policyPath = Join-Path $repositoryRoot '.github/actions-security/zizmor.yml'
 
           if (-not (Test-Path -LiteralPath $repositoryRoot)) {
             throw "Missing target repository checkout: $repositoryRoot"
           }
 
-          $policyContent = @(
-            'rules:'
-            '  unpinned-uses:'
-            '    config:'
-            '      policies:'
-            '        "actions/*": ref-pin'
-            '        "github/*": ref-pin'
-            '        "Finfinder/*": ref-pin'
-            '        "*": hash-pin'
-          ) -join [Environment]::NewLine
-
-          Set-Content -LiteralPath $policyPath -Value $policyContent -Encoding UTF8
+          if (-not (Test-Path -LiteralPath $policyPath)) {
+            throw "Missing zizmor policy file: $policyPath"
+          }
 
           try {
             $jsonOutput = zizmor --offline --collect=workflows --no-exit-codes --format=json --config "$policyPath" "$repositoryRoot"

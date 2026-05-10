@@ -45,7 +45,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout target repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           repository: ${{ inputs.source-repository }}
           ref: ${{ inputs.base-branch }}
@@ -121,8 +121,8 @@ jobs:
           SOURCE_REPOSITORY: ${{ inputs.source-repository }}
           WORKFLOW_RUN_ID: ${{ inputs.workflow-run-id }}
         run: |
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value '## Open Next Version Branch'
-          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ''
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "## Open Next Version Branch"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value ""
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Repository: $env:SOURCE_REPOSITORY"
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Workflow run: $env:WORKFLOW_RUN_ID"
           Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value "- Status: ${{ steps.open.outputs.status }}"
