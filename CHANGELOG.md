@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- GitHub Actions bumped to Node.js 24 runtime: `actions/checkout` v4→v5, `actions/setup-python` v5→v6, `actions/upload-artifact` v5→v6, `actions/download-artifact` v6→v7 across `release.yml`, `reusable-next-version-request.yml`, `reusable-open-next-version-branch.yml`, and `reusable-third-party-action-pinning.yml`
+
 ### Added
 
 - `.github/workflows/third-party-action-pinning.yml` and `.github/workflows/reusable-third-party-action-pinning.yml` — repo-local mirror of the monorepo SHA-pinning guard enforcing full 40-character SHA for third-party actions (stage 1)

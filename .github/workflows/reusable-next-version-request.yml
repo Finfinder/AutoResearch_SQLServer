@@ -35,7 +35,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout target repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ inputs.source-repository }}
           ref: ${{ inputs.repository-ref }}
@@ -61,7 +61,7 @@ jobs:
           "next-version=$($result.NextVersion)" >> $env:GITHUB_OUTPUT
 
       - name: Upload next version request artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ inputs.artifact-name }}
           path: ${{ steps.validate.outputs.artifact-path }}

@@ -45,7 +45,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout target repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ inputs.source-repository }}
           ref: ${{ inputs.base-branch }}
@@ -60,7 +60,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Download next version request artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}
           github-token: ${{ github.token }}
