@@ -33,7 +33,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Prepare release metadata
         id: prepare
@@ -87,7 +87,7 @@ jobs:
           PY
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -105,7 +105,7 @@ jobs:
         run: python scripts/build_release_artifacts.py --version "$VERSION" --output-dir release
 
       - name: Upload source release asset
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: source-release-asset
           path: release/*.zip
@@ -118,10 +118,10 @@ jobs:
       contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
 
@@ -145,7 +145,7 @@ jobs:
           Compress-Archive -Path dist/AutoResearch_SQLServer/* -DestinationPath "release/AutoResearch_SQLServer-$version-win-x64.zip"
 
       - name: Upload standalone release asset
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: standalone-release-asset
           path: release/*.zip
@@ -161,7 +161,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Prepare release metadata
         id: prepare
@@ -215,13 +215,13 @@ jobs:
           PY
 
       - name: Download source release asset
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: source-release-asset
           path: release
 
       - name: Download standalone release asset
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: standalone-release-asset
           path: release
