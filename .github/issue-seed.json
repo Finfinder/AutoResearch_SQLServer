@@ -1,0 +1,392 @@
+{
+  "issues": [
+    {
+      "title": "Make Guardrails User-Configurable",
+      "body": "Original backlog IDs: ARSS-29\n\nMake guardrails configurable by the user instead of keeping them fully hardcoded.\n\nExpose the relevant validation and safety options through project settings.",
+      "labels": [
+        "enhancement",
+        "guardrails",
+        "benchmarking",
+        "priority:high",
+        "roadmap"
+      ],
+      "milestone": "0.3.x Validation and Trust",
+      "sourceIds": [
+        "ARSS-29"
+      ]
+    },
+    {
+      "title": "Make the Auto Strict-Validation Threshold Configurable",
+      "body": "Original backlog IDs: ARSS-45\n\nMake the automatic strict-validation threshold configurable so teams can tune when stricter validation should apply.\n\nStore the threshold in project settings and use it during validation decisions.",
+      "labels": [
+        "enhancement",
+        "guardrails",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.3.x Validation and Trust",
+      "sourceIds": [
+        "ARSS-45"
+      ]
+    },
+    {
+      "title": "Cache the Base Strict-Validation Signature Across Repeated Runs",
+      "body": "Original backlog IDs: ARSS-46\n\nCache the base strict-validation signature across repeated runs to avoid recomputing identical validation input.\n\nReuse the cached signature when the same base query and validation context appear again.",
+      "labels": [
+        "enhancement",
+        "guardrails",
+        "benchmarking",
+        "priority:high",
+        "roadmap"
+      ],
+      "milestone": "0.3.x Validation and Trust",
+      "sourceIds": [
+        "ARSS-46"
+      ]
+    },
+    {
+      "title": "Add CSV Export for Benchmark Results",
+      "body": "Original backlog IDs: ARSS-30, ARSS-31\n\nAdd CSV export for benchmark results.\n\nInclude the benchmark fields needed for spreadsheet analysis and downstream processing.",
+      "labels": [
+        "enhancement",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.4.x Benchmark UX and Reporting",
+      "sourceIds": [
+        "ARSS-30",
+        "ARSS-31"
+      ]
+    },
+    {
+      "title": "Add Colorized CLI Output with Configurable Palette",
+      "body": "Original backlog IDs: ARSS-38, ARSS-39\n\nAdd colorized CLI output and allow the palette to be configured.\n\nKeep the output readable when color is disabled or when different terminal themes are used.",
+      "labels": [
+        "enhancement",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.4.x Benchmark UX and Reporting",
+      "sourceIds": [
+        "ARSS-38",
+        "ARSS-39"
+      ]
+    },
+    {
+      "title": "Add HTML and Markdown Benchmark Report Export",
+      "body": "Original backlog IDs: ARSS-22\n\nAdd HTML and Markdown export for benchmark reports.\n\nAllow a completed benchmark run to be rendered into shareable report files.",
+      "labels": [
+        "enhancement",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.4.x Benchmark UX and Reporting",
+      "sourceIds": [
+        "ARSS-22"
+      ]
+    },
+    {
+      "title": "Add a Progress Indicator for Long Benchmark Runs",
+      "body": "Original backlog IDs: ARSS-32\n\nAdd a progress indicator for long benchmark runs.\n\nShow enough progress information to make long executions easier to track from the CLI.",
+      "labels": [
+        "enhancement",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.4.x Benchmark UX and Reporting",
+      "sourceIds": [
+        "ARSS-32"
+      ]
+    },
+    {
+      "title": "Use Rich for Ranking Tables and CLI Rendering",
+      "body": "Original backlog IDs: ARSS-40\n\nUse Rich for ranking tables and general CLI rendering.\n\nApply it to improve table formatting and consistent terminal presentation.",
+      "labels": [
+        "enhancement",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.4.x Benchmark UX and Reporting",
+      "sourceIds": [
+        "ARSS-40"
+      ]
+    },
+    {
+      "title": "Add Stability Metrics to results.json",
+      "body": "Original backlog IDs: ARSS-42\n\nAdd stability metrics to results.json.\n\nPersist repeatability-oriented metrics alongside the existing benchmark result payload.",
+      "labels": [
+        "enhancement",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.4.x Benchmark UX and Reporting",
+      "sourceIds": [
+        "ARSS-42"
+      ]
+    },
+    {
+      "title": "Support Windows Authentication (Trusted Connection)",
+      "body": "Original backlog IDs: ARSS-14\n\nSupport Windows Authentication (Trusted Connection) for SQL Server connections.\n\nAllow the tool to connect without SQL username and password when the environment uses integrated auth.",
+      "labels": [
+        "enhancement",
+        "sql",
+        "priority:high",
+        "roadmap"
+      ],
+      "milestone": "0.5.x Runtime, Logging and Connectivity",
+      "sourceIds": [
+        "ARSS-14"
+      ]
+    },
+    {
+      "title": "Add Docker Compose for SQL Server and ARSS",
+      "body": "Original backlog IDs: ARSS-18\n\nAdd Docker Compose setup for SQL Server and AutoResearch SQL Server.\n\nMake it easy to start a local benchmark environment with the app and database together.",
+      "labels": [
+        "enhancement",
+        "technical-debt",
+        "roadmap"
+      ],
+      "milestone": "0.5.x Runtime, Logging and Connectivity",
+      "sourceIds": [
+        "ARSS-18"
+      ]
+    },
+    {
+      "title": "Add --no-cache-clear Flag for DBCC Control",
+      "body": "Original backlog IDs: ARSS-19\n\nAdd a --no-cache-clear flag to control DBCC cache clearing.\n\nLet benchmark runs skip cache clearing when the operator explicitly wants that behavior.",
+      "labels": [
+        "enhancement",
+        "benchmarking",
+        "priority:high",
+        "roadmap"
+      ],
+      "milestone": "0.5.x Runtime, Logging and Connectivity",
+      "sourceIds": [
+        "ARSS-19"
+      ]
+    },
+    {
+      "title": "Rotate Log Files with RotatingFileHandler",
+      "body": "Original backlog IDs: ARSS-33\n\nRotate log files with RotatingFileHandler.\n\nPrevent unbounded log growth while keeping recent run history available.",
+      "labels": [
+        "enhancement",
+        "technical-debt",
+        "roadmap"
+      ],
+      "milestone": "0.5.x Runtime, Logging and Connectivity",
+      "sourceIds": [
+        "ARSS-33"
+      ]
+    },
+    {
+      "title": "Add Structured JSON Logging",
+      "body": "Original backlog IDs: ARSS-35\n\nAdd structured JSON logging.\n\nEmit machine-readable log records that are easier to index, search, and ingest.",
+      "labels": [
+        "enhancement",
+        "technical-debt",
+        "roadmap"
+      ],
+      "milestone": "0.5.x Runtime, Logging and Connectivity",
+      "sourceIds": [
+        "ARSS-35"
+      ]
+    },
+    {
+      "title": "Introduce BenchmarkConnectionManager for Connection Lifecycle",
+      "body": "Original backlog IDs: ARSS-41\n\nIntroduce BenchmarkConnectionManager to own connection lifecycle concerns.\n\nCentralize connection setup, reuse, and teardown for benchmark execution.",
+      "labels": [
+        "technical-debt",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.5.x Runtime, Logging and Connectivity",
+      "sourceIds": [
+        "ARSS-41"
+      ]
+    },
+    {
+      "title": "Add Experiment History Tracking",
+      "body": "Original backlog IDs: ARSS-8\n\nAdd experiment history tracking.\n\nStore enough metadata to review and compare past benchmark runs over time.",
+      "labels": [
+        "enhancement",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.6.x Persistence and Automation",
+      "sourceIds": [
+        "ARSS-8"
+      ]
+    },
+    {
+      "title": "Add Nightly Benchmark Runs",
+      "body": "Original backlog IDs: ARSS-9\n\nAdd nightly benchmark runs.\n\nSupport scheduled execution so recurring performance baselines can be collected automatically.",
+      "labels": [
+        "enhancement",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.6.x Persistence and Automation",
+      "sourceIds": [
+        "ARSS-9"
+      ]
+    },
+    {
+      "title": "Persist Benchmark Results to a Database",
+      "body": "Original backlog IDs: ARSS-10\n\nPersist benchmark results to a database.\n\nStore run outputs in a durable form that can be queried later.",
+      "labels": [
+        "enhancement",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.6.x Persistence and Automation",
+      "sourceIds": [
+        "ARSS-10"
+      ]
+    },
+    {
+      "title": "Build a Benchmark Dashboard",
+      "body": "Original backlog IDs: ARSS-11\n\nBuild a benchmark dashboard.\n\nProvide a UI or report surface for browsing benchmark history and comparing outcomes.",
+      "labels": [
+        "enhancement",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.6.x Persistence and Automation",
+      "sourceIds": [
+        "ARSS-11"
+      ]
+    },
+    {
+      "title": "Integrate Automated Query Optimization into CI/CD",
+      "body": "Original backlog IDs: ARSS-13\n\nIntegrate automated query optimization into CI/CD.\n\nAllow optimization and benchmark checks to run as part of the delivery pipeline.",
+      "labels": [
+        "enhancement",
+        "ai",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "0.6.x Persistence and Automation",
+      "sourceIds": [
+        "ARSS-13"
+      ]
+    },
+    {
+      "title": "Add Schema-Aware INDEX Hint Suggestions",
+      "body": "Original backlog IDs: ARSS-25\n\nAdd schema-aware INDEX hint suggestions.\n\nUse available schema context to propose more relevant index hints during optimization.",
+      "labels": [
+        "enhancement",
+        "sql",
+        "roadmap"
+      ],
+      "milestone": "0.7.x SQL Coverage and Agentic Optimization",
+      "sourceIds": [
+        "ARSS-25"
+      ]
+    },
+    {
+      "title": "Support Triple Transformation Combinations",
+      "body": "Original backlog IDs: ARSS-43\n\nSupport triple transformation combinations.\n\nAllow the variant generator to compose three compatible transformations in one candidate.",
+      "labels": [
+        "enhancement",
+        "sql",
+        "roadmap"
+      ],
+      "milestone": "0.7.x SQL Coverage and Agentic Optimization",
+      "sourceIds": [
+        "ARSS-43"
+      ]
+    },
+    {
+      "title": "Add Stored Procedure Parsing and Optimization",
+      "body": "Original backlog IDs: ARSS-26\n\nAdd stored procedure parsing and optimization.\n\nSupport extracting and optimizing SQL that originates from stored procedures.",
+      "labels": [
+        "enhancement",
+        "sql",
+        "roadmap"
+      ],
+      "milestone": "0.7.x SQL Coverage and Agentic Optimization",
+      "sourceIds": [
+        "ARSS-26"
+      ]
+    },
+    {
+      "title": "Add an Agent That Analyzes Execution Plans",
+      "body": "Original backlog IDs: ARSS-6\n\nAdd an agent that analyzes execution plans.\n\nUse the plan analysis to surface optimization guidance during benchmark review.",
+      "labels": [
+        "enhancement",
+        "ai",
+        "sql",
+        "roadmap"
+      ],
+      "milestone": "0.7.x SQL Coverage and Agentic Optimization",
+      "sourceIds": [
+        "ARSS-6"
+      ]
+    },
+    {
+      "title": "Add an Agent That Suggests Indexes",
+      "body": "Original backlog IDs: ARSS-7\n\nAdd an agent that suggests indexes.\n\nUse benchmark context and SQL analysis to propose candidate indexes.",
+      "labels": [
+        "enhancement",
+        "ai",
+        "sql",
+        "roadmap"
+      ],
+      "milestone": "0.7.x SQL Coverage and Agentic Optimization",
+      "sourceIds": [
+        "ARSS-7"
+      ]
+    },
+    {
+      "title": "Add LLM-Assisted SQL Variant Generation",
+      "body": "Original backlog IDs: ARSS-12\n\nAdd LLM-assisted SQL variant generation.\n\nUse an LLM to suggest additional SQL rewrites that can be benchmarked safely.",
+      "labels": [
+        "enhancement",
+        "ai",
+        "sql",
+        "roadmap"
+      ],
+      "milestone": "0.7.x SQL Coverage and Agentic Optimization",
+      "sourceIds": [
+        "ARSS-12"
+      ]
+    },
+    {
+      "title": "Migrate Project Metadata and Tooling to pyproject.toml",
+      "body": "Original backlog IDs: ARSS-23\n\nMigrate project metadata and tooling to pyproject.toml.\n\nMove supported packaging and tool configuration into a single modern project file.",
+      "labels": [
+        "technical-debt",
+        "roadmap"
+      ],
+      "milestone": "1.0 Release Hardening",
+      "sourceIds": [
+        "ARSS-23"
+      ]
+    },
+    {
+      "title": "Move Generator Hyperparameters to settings.yaml",
+      "body": "Original backlog IDs: ARSS-24\n\nMove generator hyperparameters to settings.yaml.\n\nKeep the variant generator's tunable settings in configuration instead of hardcoded values.",
+      "labels": [
+        "technical-debt",
+        "roadmap"
+      ],
+      "milestone": "1.0 Release Hardening",
+      "sourceIds": [
+        "ARSS-24"
+      ]
+    },
+    {
+      "title": "Model Benchmark Result Payloads with TypedDict or Dataclass",
+      "body": "Original backlog IDs: ARSS-44\n\nModel benchmark result payloads with TypedDict or Dataclass.\n\nGive result structures an explicit typed shape to reduce ad hoc dictionaries.",
+      "labels": [
+        "technical-debt",
+        "benchmarking",
+        "roadmap"
+      ],
+      "milestone": "1.0 Release Hardening",
+      "sourceIds": [
+        "ARSS-44"
+      ]
+    }
+  ]
+}
