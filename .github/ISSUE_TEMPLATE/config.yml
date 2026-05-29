@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributing Guide
+    url: https://github.com/Finfinder/AutoResearch_SQLServer/blob/main/CONTRIBUTING.md
+    about: Read the lightweight issue, roadmap, and linking rules before opening an issue.

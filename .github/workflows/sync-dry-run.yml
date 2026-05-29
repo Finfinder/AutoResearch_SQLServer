@@ -1,0 +1,52 @@
+name: Sync dry-run
+
+on:
+  push:
+    branches: [ main, master, 'release/**' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: {}
+
+jobs:
+  sync-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate UTF-8 and uniqueness
+        shell: pwsh
+        run: |
+          $files = @('.github/gh-sync.json', '.github/issue-seed.json')
+          foreach ($f in $files) {
+            if (-not (Test-Path $f)) { Write-Output "$f nie istnieje — warning i kontynuacja"; continue }
+            try { $raw = Get-Content -Raw -Encoding UTF8 $f -ErrorAction Stop } catch { Write-Warning "$f nie jest UTF-8"; continue }
+            try { $json = $raw | ConvertFrom-Json -ErrorAction Stop } catch { Write-Warning "B³¹d parsowania JSON w $f"; continue }
+            $ids = @(); if ($json -is [System.Collections.IEnumerable]) { foreach ($i in $json) { if ($i.sourceId) { $ids += $i.sourceId } } } else { if ($json.sourceId) { $ids += $json.sourceId } }
+            $dups = $ids | Group-Object | Where-Object { $_.Count -gt 1 }
+            if ($dups) { Write-Warning "$f zawiera duplikaty sourceId" }
+          }
+
+      - name: Run dry-run scripts (if present)
+        shell: pwsh
+        run: |
+          Remove-Item -ErrorAction SilentlyContinue sync-dry-run.log
+          $scripts = @('./scripts/sync-github-meta.ps1','./scripts/seed-github-issues.ps1')
+          foreach ($s in $scripts) {
+            if (Test-Path $s) {
+              try { & $s -DryRun *>&1 | Tee-Object -FilePath sync-dry-run.log -Append } catch { try { & $s *>&1 | Tee-Object -FilePath sync-dry-run.log -Append } catch { Write-Warning "B³¹d uruchomienia $s" } }
+            } else { Write-Output "$s nie istnieje — pomijam" | Tee-Object -FilePath sync-dry-run.log -Append }
+          }
+
+      - name: Upload dry-run log
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-dry-run-log
+          path: sync-dry-run.log
+
+      - name: Analyze dry-run log
+        shell: pwsh
+        run: |
+          if (Test-Path sync-dry-run.log) {
+            $log = Get-Content sync-dry-run.log -Raw
+            if ($log -match '(change|will be created|will be modified|To be applied|Changes:|CHANGE)') { Write-Output "POTENCJALNE ZMIANY" } else { Write-Output "Brak jasnych zmian" }
+          } else { Write-Output "Brak logu do analizy" }

@@ -1,0 +1,68 @@
+name: Bug Report
+description: Report a reproducible bug or regression.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug in AutoResearch SQL Server.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Pick the closest affected area.
+      options:
+        - sql
+        - benchmarking
+        - guardrails
+        - cli
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: bug_description
+    attributes:
+      label: Bug description
+      description: What is broken?
+    validations:
+      required: true
+  - type: textarea
+    id: steps_to_reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run ...
+        2. Use query ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: input
+    id: sql_server_version
+    attributes:
+      label: SQL Server version / edition
+      placeholder: e.g. SQL Server 2022 Developer
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment details
+      description: Include ODBC driver, permissions, and anything relevant to the benchmark setup.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched for existing issues before opening this report.
+          required: true

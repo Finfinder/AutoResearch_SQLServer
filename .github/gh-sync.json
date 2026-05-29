@@ -1,0 +1,104 @@
+{
+  "repo": {
+    "slug": "Finfinder/AutoResearch_SQLServer"
+  },
+  "features": {
+    "issues": true,
+    "projects": true,
+    "wiki": false,
+    "discussions": false
+  },
+  "labels": [
+    {
+      "name": "bug",
+      "color": "d73a4a",
+      "description": "Bug to investigate and fix."
+    },
+    {
+      "name": "enhancement",
+      "color": "a2eeef",
+      "description": "Improvement or new capability."
+    },
+    {
+      "name": "documentation",
+      "color": "0075ca",
+      "description": "Documentation-only change."
+    },
+    {
+      "name": "priority:high",
+      "color": "b60205",
+      "description": "High-priority work."
+    },
+    {
+      "name": "ai",
+      "color": "1d76db",
+      "description": "AI-assisted workflow or automation topic."
+    },
+    {
+      "name": "technical-debt",
+      "color": "fbca04",
+      "description": "Refactoring, cleanup, or maintenance debt."
+    },
+    {
+      "name": "roadmap",
+      "color": "0e8a16",
+      "description": "Roadmap or larger planning topic."
+    },
+    {
+      "name": "sql",
+      "color": "5319e7",
+      "description": "SQL rewrite or query-shape topic."
+    },
+    {
+      "name": "benchmarking",
+      "color": "0366d6",
+      "description": "Benchmark execution, metrics, or ranking topic."
+    },
+    {
+      "name": "guardrails",
+      "color": "e99695",
+      "description": "Validation, safety, or guardrail topic."
+    }
+  ],
+  "milestones": [
+    {
+      "title": "0.3.x Validation and Trust",
+      "description": "Strengthen validation evidence, trust signals, and safe benchmark correctness checks.",
+      "state": "open"
+    },
+    {
+      "title": "0.4.x Benchmark UX and Reporting",
+      "description": "Improve CLI readability, exports, summaries, and report-friendly benchmark output.",
+      "state": "open"
+    },
+    {
+      "title": "0.5.x Runtime, Logging and Connectivity",
+      "description": "Harden connection handling, runtime diagnostics, and automation-friendly logging.",
+      "state": "open"
+    },
+    {
+      "title": "0.6.x Persistence and Automation",
+      "description": "Add saved benchmark history, reusable profiles, and lightweight automation workflows.",
+      "state": "open"
+    },
+    {
+      "title": "0.7.x SQL Coverage and Agentic Optimization",
+      "description": "Expand SQL rewrite coverage and add AI-assisted optimization workflows.",
+      "state": "open"
+    },
+    {
+      "title": "1.0 Release Hardening",
+      "description": "Finalize packaging, release checks, documentation, and stable operator experience.",
+      "state": "open"
+    }
+  ],
+  "roadmapIssue": {
+    "enabled": true,
+    "title": "Project Status / Roadmap",
+    "labels": [
+      "roadmap"
+    ],
+    "bodyPath": ".github/roadmap-issue.md",
+    "pin": true
+  }
+}

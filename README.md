@@ -7,6 +7,12 @@
 
 Automated SQL query performance researcher for Microsoft SQL Server. Takes a base SQL query, generates structural variants (JOIN→EXISTS, NOLOCK, RECOMPILE), benchmarks each against a live database, and reports the fastest one. Additionally collects server-side metrics: IO (logical/physical reads), CPU time, memory grants and actual execution plans via SQL Server's built-in diagnostics — enabling multi-criteria ranking beyond wall-clock time alone.
 
+## Feedback, Issues, and Contributing
+
+- Report bugs and feature ideas through GitHub Issues: https://github.com/Finfinder/AutoResearch_SQLServer/issues
+- Larger goals are tracked with milestones and the pinned roadmap issue.
+- Collaboration notes live in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ---
 
 ## Use Cases
