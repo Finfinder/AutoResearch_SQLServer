@@ -214,3 +214,7 @@ __marimo__/
 # Generated execution plans (runtime artefacts)
 plans/
 results.json
+
+# Local test/run artifacts (generated during local runs or CI helpers)
+.pytest-collect.txt
+dist-release-check/
