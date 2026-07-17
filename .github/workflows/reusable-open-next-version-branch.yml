@@ -89,6 +89,8 @@ jobs:
           VERSION_TARGETS_PATH: ${{ inputs.version-targets-path }}
           README_TARGETS_PATH: ${{ inputs.readme-targets-path }}
           BASE_BRANCH: ${{ inputs.base-branch }}
+          SOURCE_REPOSITORY: ${{ inputs.source-repository }}
+          WORKFLOW_RUN_ID: ${{ inputs.workflow-run-id }}
         run: |
           $result = & "${{ github.workspace }}/repository/scripts/open-next-version-branch.ps1" `
             -RepositoryRoot "${{ github.workspace }}/repository" `
@@ -111,7 +113,7 @@ jobs:
           }
 
       - name: Push next version branch
-        if: ${{ steps.open.outputs.status == 'updated' && steps.open.outputs.commit-created == 'true' }}
+        if: ${{ steps.open.outputs.status == 'updated' && steps.open.outputs['commit-created'] == 'true' }}
         working-directory: repository
         run: git push origin HEAD:${{ steps.open.outputs.branch-name }}
 
